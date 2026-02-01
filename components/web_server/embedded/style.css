@@ -1,0 +1,414 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+:root {
+    --bg: #1a1a2e;
+    --card-bg: #16213e;
+    --primary: #e94560;
+    --primary-dark: #c73e54;
+    --text: #eee;
+    --text-dim: #888;
+    --success: #4ade80;
+    --warning: #fbbf24;
+    --border: #333;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    -webkit-tap-highlight-color: transparent;
+}
+
+#app {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 16px;
+    padding-bottom: 80px;
+}
+
+header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+header h1 {
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.status-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--text-dim);
+}
+
+.status-dot.connected { background: var(--success); }
+.status-dot.warning { background: var(--warning); }
+.status-dot.error { background: var(--primary); }
+
+nav {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.nav-btn {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    background: var(--card-bg);
+    color: var(--text-dim);
+    font-size: 14px;
+    font-weight: 500;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.nav-btn.active {
+    background: var(--primary);
+    color: white;
+}
+
+.page {
+    display: none;
+}
+
+.page.active {
+    display: block;
+}
+
+.card {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.card h2 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--text-dim);
+}
+
+.status-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.status-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.status-item .label {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+}
+
+.status-item .value {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.btn {
+    padding: 12px 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--border);
+    color: var(--text);
+}
+
+.btn:active {
+    transform: scale(0.98);
+}
+
+.btn-primary {
+    background: var(--primary);
+    color: white;
+}
+
+.btn-primary:active {
+    background: var(--primary-dark);
+}
+
+.btn-full {
+    width: 100%;
+}
+
+.btn-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.btn-row .btn {
+    flex: 1;
+}
+
+.color-picker {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.color-picker input[type="color"] {
+    width: 48px;
+    height: 48px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.color-picker input[type="range"] {
+    flex: 1;
+}
+
+input[type="range"] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 8px;
+    border-radius: 4px;
+    background: var(--border);
+    outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--primary);
+    cursor: pointer;
+}
+
+.form-group {
+    margin-bottom: 16px;
+}
+
+.form-group label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+}
+
+input[type="text"],
+input[type="password"],
+input[type="number"],
+select {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+}
+
+input[type="number"] {
+    width: 60px;
+    text-align: center;
+}
+
+select {
+    cursor: pointer;
+}
+
+.time-picker {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.time-picker span {
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.day-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.day-picker label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 12px;
+    background: var(--bg);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.day-picker input:checked + * {
+    color: var(--primary);
+}
+
+.day-picker input {
+    display: none;
+}
+
+.day-picker label:has(input:checked) {
+    background: var(--primary);
+    color: white;
+}
+
+/* Alarm list */
+.alarm-item {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    background: var(--bg);
+    border-radius: 8px;
+    margin-bottom: 8px;
+}
+
+.alarm-item .alarm-time {
+    font-size: 24px;
+    font-weight: 600;
+    margin-right: 12px;
+}
+
+.alarm-item .alarm-info {
+    flex: 1;
+}
+
+.alarm-item .alarm-days {
+    font-size: 12px;
+    color: var(--text-dim);
+}
+
+.alarm-item .alarm-toggle {
+    width: 48px;
+    height: 28px;
+    background: var(--border);
+    border-radius: 14px;
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.alarm-item .alarm-toggle.active {
+    background: var(--success);
+}
+
+.alarm-item .alarm-toggle::after {
+    content: '';
+    position: absolute;
+    width: 24px;
+    height: 24px;
+    background: white;
+    border-radius: 50%;
+    top: 2px;
+    left: 2px;
+    transition: transform 0.2s;
+}
+
+.alarm-item .alarm-toggle.active::after {
+    transform: translateX(20px);
+}
+
+/* Modal */
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+
+.modal.show {
+    display: flex;
+}
+
+.modal-content {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 20px;
+    width: 100%;
+    max-width: 400px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.modal-content h3 {
+    margin-bottom: 16px;
+}
+
+/* WiFi networks */
+.wifi-item {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    background: var(--bg);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    cursor: pointer;
+}
+
+.wifi-item:active {
+    background: var(--border);
+}
+
+.wifi-item .wifi-name {
+    flex: 1;
+}
+
+.wifi-item .wifi-signal {
+    font-size: 12px;
+    color: var(--text-dim);
+}
+
+.wifi-item .wifi-lock {
+    margin-left: 8px;
+}
+
+/* Loading */
+.loading {
+    text-align: center;
+    padding: 20px;
+    color: var(--text-dim);
+}
+
+.loading::after {
+    content: '';
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-left: 8px;
+    vertical-align: middle;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}

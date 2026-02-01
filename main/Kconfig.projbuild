@@ -1,0 +1,148 @@
+menu "MorningLight Configuration"
+
+    menu "GPIO Configuration"
+        config ML_GPIO_LED_R
+            int "Red LED GPIO"
+            default 25
+            help
+                GPIO pin for PWM red channel.
+
+        config ML_GPIO_LED_G
+            int "Green LED GPIO"
+            default 26
+            help
+                GPIO pin for PWM green channel.
+
+        config ML_GPIO_LED_B
+            int "Blue LED GPIO"
+            default 27
+            help
+                GPIO pin for PWM blue channel.
+
+        config ML_GPIO_LED_DATA
+            int "Addressable LED Data GPIO"
+            default 18
+            help
+                GPIO pin for addressable LED data (WS2812 etc).
+
+        config ML_GPIO_BTN_RESET
+            int "Reset Button GPIO"
+            default 0
+            help
+                GPIO pin for reset button (boot button).
+
+        config ML_GPIO_BTN_SCENARIO
+            int "Scenario Button GPIO"
+            default 4
+            help
+                GPIO pin for scenario cycling button.
+
+        config ML_GPIO_STATUS_LED
+            int "Status LED GPIO"
+            default 2
+            help
+                GPIO pin for built-in status LED.
+    endmenu
+
+    menu "WiFi Configuration"
+        config ML_WIFI_AP_SSID_PREFIX
+            string "AP SSID Prefix"
+            default "MorningLight"
+            help
+                Prefix for the AP SSID. Device MAC suffix will be appended.
+
+        config ML_WIFI_AP_CHANNEL
+            int "AP WiFi Channel"
+            default 1
+            range 1 13
+            help
+                WiFi channel for AP mode.
+
+        config ML_WIFI_AP_MAX_CONN
+            int "AP Max Connections"
+            default 4
+            range 1 10
+            help
+                Maximum number of stations connected to AP.
+
+        config ML_WIFI_STA_RETRY_COUNT
+            int "STA Retry Count"
+            default 5
+            range 1 20
+            help
+                Number of times to retry connecting to WiFi in STA mode.
+
+        config ML_WIFI_FALLBACK_TIMEOUT_S
+            int "STA to AP Fallback Timeout (seconds)"
+            default 30
+            range 10 120
+            help
+                Seconds to wait before falling back to AP mode if STA fails.
+    endmenu
+
+    menu "LED Configuration"
+        config ML_LED_PWM_FREQ_HZ
+            int "PWM Frequency (Hz)"
+            default 4000
+            range 1000 20000
+            help
+                PWM frequency for LED control.
+
+        config ML_LED_GAMMA
+            string "Gamma Correction Value"
+            default "2.2"
+            help
+                Gamma value for perceptually uniform brightness.
+
+        config ML_LED_MAX_BRIGHTNESS
+            int "Maximum Brightness (%)"
+            default 100
+            range 10 100
+            help
+                Maximum LED brightness percentage.
+    endmenu
+
+    menu "NTP Configuration"
+        config ML_NTP_SERVER1
+            string "Primary NTP Server"
+            default "pool.ntp.org"
+            help
+                Primary NTP server for time sync.
+
+        config ML_NTP_SERVER2
+            string "Secondary NTP Server"
+            default "time.google.com"
+            help
+                Secondary NTP server for time sync.
+
+        config ML_NTP_SYNC_INTERVAL_H
+            int "NTP Sync Interval (hours)"
+            default 6
+            range 1 24
+            help
+                Hours between NTP sync attempts.
+
+        config ML_DEFAULT_TIMEZONE
+            string "Default Timezone"
+            default "UTC0"
+            help
+                Default POSIX timezone string.
+    endmenu
+
+    menu "Sunrise Configuration"
+        config ML_SUNRISE_DEFAULT_DURATION_MIN
+            int "Default Sunrise Duration (minutes)"
+            default 30
+            range 5 120
+            help
+                Default duration for sunrise simulation.
+
+        config ML_SUNRISE_UPDATE_INTERVAL_MS
+            int "Sunrise Update Interval (ms)"
+            default 100
+            range 50 1000
+            help
+                Milliseconds between brightness updates during sunrise.
+    endmenu
+
+endmenu

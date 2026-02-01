@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>MorningLight</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>MorningLight</h1>
+            <div id="status-indicator" class="status-dot"></div>
+        </header>
+
+        <nav>
+            <button class="nav-btn active" data-page="home">Home</button>
+            <button class="nav-btn" data-page="alarms">Alarms</button>
+            <button class="nav-btn" data-page="settings">Settings</button>
+        </nav>
+
+        <!-- Home Page -->
+        <section id="page-home" class="page active">
+            <div class="card">
+                <h2>Status</h2>
+                <div class="status-grid">
+                    <div class="status-item">
+                        <span class="label">WiFi</span>
+                        <span id="wifi-status" class="value">--</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Time</span>
+                        <span id="time-display" class="value">--:--</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Sunrise</span>
+                        <span id="sunrise-status" class="value">--</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Brightness</span>
+                        <span id="brightness-display" class="value">0%</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Quick Test</h2>
+                <div class="form-group">
+                    <label>Color Temperature</label>
+                    <input type="range" id="test-color-temp" min="2000" max="6500" value="3000">
+                    <span id="test-color-temp-val">3000K</span>
+                </div>
+                <div class="form-group">
+                    <label>Brightness</label>
+                    <input type="range" id="test-brightness" min="0" max="100" value="50">
+                    <span id="test-brightness-val">50%</span>
+                </div>
+                <div class="btn-row">
+                    <button id="btn-apply-test" class="btn btn-primary">Apply</button>
+                    <button id="btn-off" class="btn">Off</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Alarms Page -->
+        <section id="page-alarms" class="page">
+            <div class="card">
+                <h2>Alarms</h2>
+                <div id="alarm-list"></div>
+                <button id="btn-add-alarm" class="btn btn-primary btn-full">Add Alarm</button>
+            </div>
+
+            <!-- Alarm Editor Modal -->
+            <div id="alarm-modal" class="modal">
+                <div class="modal-content">
+                    <h3 id="alarm-modal-title">Edit Alarm</h3>
+                    <form id="alarm-form">
+                        <input type="hidden" id="alarm-id">
+                        <div class="form-group">
+                            <label>Time</label>
+                            <div class="time-picker">
+                                <input type="number" id="alarm-hour" min="0" max="23" value="7">
+                                <span>:</span>
+                                <input type="number" id="alarm-minute" min="0" max="59" value="0">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Duration (minutes)</label>
+                            <input type="range" id="alarm-duration" min="5" max="60" value="30">
+                            <span id="alarm-duration-val">30 min</span>
+                        </div>
+                        <div class="form-group">
+                            <label>Days</label>
+                            <div class="day-picker">
+                                <label><input type="checkbox" data-day="0"> Su</label>
+                                <label><input type="checkbox" data-day="1" checked> Mo</label>
+                                <label><input type="checkbox" data-day="2" checked> Tu</label>
+                                <label><input type="checkbox" data-day="3" checked> We</label>
+                                <label><input type="checkbox" data-day="4" checked> Th</label>
+                                <label><input type="checkbox" data-day="5" checked> Fr</label>
+                                <label><input type="checkbox" data-day="6"> Sa</label>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Color Temperature</label>
+                            <input type="range" id="alarm-color-temp" min="2000" max="6500" value="3000">
+                            <span id="alarm-color-temp-val">3000K</span>
+                        </div>
+                        <div class="form-group">
+                            <label>Max Brightness</label>
+                            <input type="range" id="alarm-brightness" min="10" max="100" value="100">
+                            <span id="alarm-brightness-val">100%</span>
+                        </div>
+                        <div class="btn-row">
+                            <button type="button" id="btn-alarm-cancel" class="btn">Cancel</button>
+                            <button type="submit" class="btn btn-primary">Save</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <!-- Settings Page -->
+        <section id="page-settings" class="page">
+            <!-- WiFi Setup -->
+            <div class="card" id="wifi-setup">
+                <h2>WiFi Setup</h2>
+                <div id="wifi-networks"></div>
+                <button id="btn-scan" class="btn btn-full">Scan Networks</button>
+                <div id="wifi-connect-form" style="display:none">
+                    <input type="text" id="wifi-ssid" placeholder="Network name" readonly>
+                    <input type="password" id="wifi-password" placeholder="Password">
+                    <button id="btn-connect" class="btn btn-primary btn-full">Connect</button>
+                </div>
+            </div>
+
+            <!-- Time Settings -->
+            <div class="card">
+                <h2>Time</h2>
+                <div class="form-group">
+                    <label>Timezone</label>
+                    <select id="timezone">
+                        <option value="UTC12">UTC-12</option>
+                        <option value="UTC11">UTC-11</option>
+                        <option value="UTC10">UTC-10</option>
+                        <option value="UTC9">UTC-9</option>
+                        <option value="UTC8">UTC-8</option>
+                        <option value="UTC7">UTC-7</option>
+                        <option value="UTC6">UTC-6</option>
+                        <option value="UTC5">UTC-5</option>
+                        <option value="UTC4">UTC-4</option>
+                        <option value="UTC3">UTC-3</option>
+                        <option value="UTC2">UTC-2</option>
+                        <option value="UTC1">UTC-1</option>
+                        <option value="UTC0" selected>UTC</option>
+                        <option value="UTC-1">UTC+1</option>
+                        <option value="UTC-2">UTC+2</option>
+                        <option value="UTC-3">UTC+3</option>
+                        <option value="UTC-4">UTC+4</option>
+                        <option value="UTC-5">UTC+5</option>
+                        <option value="UTC-6">UTC+6</option>
+                        <option value="UTC-7">UTC+7</option>
+                        <option value="UTC-8">UTC+8</option>
+                        <option value="UTC-9">UTC+9</option>
+                        <option value="UTC-10">UTC+10</option>
+                        <option value="UTC-11">UTC+11</option>
+                        <option value="UTC-12">UTC+12</option>
+                        <option value="UTC-13">UTC+13</option>
+                        <option value="UTC-14">UTC+14</option>
+                    </select>
+                </div>
+                <button id="btn-sync-time" class="btn btn-full">Sync Time Now</button>
+            </div>
+
+            <!-- General Settings -->
+            <div class="card">
+                <h2>General</h2>
+                <div class="form-group">
+                    <label>Max Brightness Limit</label>
+                    <input type="range" id="max-brightness" min="10" max="100" value="100">
+                    <span id="max-brightness-val">100%</span>
+                </div>
+                <div class="form-group">
+                    <label>PWM Frequency (Hz)</label>
+                    <input type="number" id="pwm-frequency" min="100" max="40000" value="4000" style="width:100%">
+                </div>
+                <button id="btn-save-settings" class="btn btn-primary btn-full">Save Settings</button>
+            </div>
+        </section>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
