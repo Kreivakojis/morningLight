@@ -61,18 +61,12 @@ static void apply_pwm(void)
     uint8_t scaled_b = (uint8_t)(led_state.b * brightness_scale);
 
     // Apply gamma correction to get duty cycle
+    // N-channel MOSFETs: HIGH = ON, higher duty = brighter
     uint32_t duty_r = color_utils_gamma_correct(scaled_r, GAMMA_VALUE);
     uint32_t duty_g = color_utils_gamma_correct(scaled_g, GAMMA_VALUE);
     uint32_t duty_b = color_utils_gamma_correct(scaled_b, GAMMA_VALUE);
 
-    // Invert duty cycle for P-channel MOSFETs (active low)
-    // P-channel: LOW = ON, HIGH = OFF
-    duty_r = LEDC_DUTY_MAX - duty_r;
-    duty_g = LEDC_DUTY_MAX - duty_g;
-    duty_b = LEDC_DUTY_MAX - duty_b;
-
-    ESP_LOGD(TAG, "PWM duty: R=%lu, G=%lu, B=%lu (inverted for P-channel)",
-             duty_r, duty_g, duty_b);
+    ESP_LOGD(TAG, "PWM duty: R=%lu, G=%lu, B=%lu", duty_r, duty_g, duty_b);
 
     // Set PWM duty cycles
     ledc_set_duty(LEDC_MODE, LEDC_CHANNEL_R, duty_r);
@@ -145,14 +139,14 @@ esp_err_t led_controller_init(void)
     ESP_ERROR_CHECK(ledc_timer_config(&timer_conf));
 
     // Configure Red channel
-    // Initial duty = LEDC_DUTY_MAX (4095) = HIGH = P-channel MOSFET OFF = LED OFF
+    // Initial duty = 0 = LOW = N-channel MOSFET OFF = LED OFF
     ledc_channel_config_t ch_conf = {
         .gpio_num = CONFIG_ML_GPIO_LED_R,
         .speed_mode = LEDC_MODE,
         .channel = LEDC_CHANNEL_R,
         .intr_type = LEDC_INTR_DISABLE,
         .timer_sel = LEDC_TIMER,
-        .duty = LEDC_DUTY_MAX,
+        .duty = 0,
         .hpoint = 0,
     };
     ESP_ERROR_CHECK(ledc_channel_config(&ch_conf));
@@ -160,13 +154,13 @@ esp_err_t led_controller_init(void)
     // Configure Green channel
     ch_conf.gpio_num = CONFIG_ML_GPIO_LED_G;
     ch_conf.channel = LEDC_CHANNEL_G;
-    ch_conf.duty = LEDC_DUTY_MAX;
+    ch_conf.duty = 0;
     ESP_ERROR_CHECK(ledc_channel_config(&ch_conf));
 
     // Configure Blue channel
     ch_conf.gpio_num = CONFIG_ML_GPIO_LED_B;
     ch_conf.channel = LEDC_CHANNEL_B;
-    ch_conf.duty = LEDC_DUTY_MAX;
+    ch_conf.duty = 0;
     ESP_ERROR_CHECK(ledc_channel_config(&ch_conf));
 
     led_state.initialized = true;
@@ -294,24 +288,18 @@ void led_controller_set_duty_raw(uint32_t duty_r, uint32_t duty_g, uint32_t duty
     if (duty_g > LEDC_DUTY_MAX) duty_g = LEDC_DUTY_MAX;
     if (duty_b > LEDC_DUTY_MAX) duty_b = LEDC_DUTY_MAX;
 
-    // Invert for P-channel MOSFETs: user sees 0=off, 4095=full on
-    // but P-channel needs LOW=on, HIGH=off
-    uint32_t hw_r = LEDC_DUTY_MAX - duty_r;
-    uint32_t hw_g = LEDC_DUTY_MAX - duty_g;
-    uint32_t hw_b = LEDC_DUTY_MAX - duty_b;
-
-    ESP_LOGD(TAG, "Raw PWM: user R=%lu G=%lu B=%lu -> hw R=%lu G=%lu B=%lu",
-             duty_r, duty_g, duty_b, hw_r, hw_g, hw_b);
+    // N-channel MOSFETs: 0=off, 4095=full on (no inversion needed)
+    ESP_LOGD(TAG, "Raw PWM: R=%lu G=%lu B=%lu", duty_r, duty_g, duty_b);
 
     xSemaphoreTake(led_state.mutex, portMAX_DELAY);
 
-    ledc_set_duty(LEDC_MODE, LEDC_CHANNEL_R, hw_r);
+    ledc_set_duty(LEDC_MODE, LEDC_CHANNEL_R, duty_r);
     ledc_update_duty(LEDC_MODE, LEDC_CHANNEL_R);
 
-    ledc_set_duty(LEDC_MODE, LEDC_CHANNEL_G, hw_g);
+    ledc_set_duty(LEDC_MODE, LEDC_CHANNEL_G, duty_g);
     ledc_update_duty(LEDC_MODE, LEDC_CHANNEL_G);
 
-    ledc_set_duty(LEDC_MODE, LEDC_CHANNEL_B, hw_b);
+    ledc_set_duty(LEDC_MODE, LEDC_CHANNEL_B, duty_b);
     ledc_update_duty(LEDC_MODE, LEDC_CHANNEL_B);
 
     xSemaphoreGive(led_state.mutex);
