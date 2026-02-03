@@ -26,7 +26,7 @@ ESP32-based sunrise alarm clock with RGB LED control and web interface.
   - Gamma correction (2.2) for perceptual brightness
   - Color temperature control (2000K-6500K)
   - N-channel MOSFET support
-  - Configurable PWM frequency (100-40000 Hz)
+  - Configurable PWM frequency (100-500 Hz, minimum 100Hz enforced by hardware)
   - Smooth fade transitions
 
 - **Sunrise Simulation**

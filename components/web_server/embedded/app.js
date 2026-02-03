@@ -276,6 +276,10 @@ $('#max-brightness').addEventListener('input', (e) => {
     $('#max-brightness-val').textContent = `${e.target.value}%`;
 });
 
+$('#pwm-frequency').addEventListener('input', (e) => {
+    $('#pwm-frequency-val').textContent = `${e.target.value} Hz`;
+});
+
 $('#btn-save-settings').addEventListener('click', async () => {
     const config = {
         timezone: $('#timezone').value,
@@ -294,7 +298,8 @@ async function loadConfig() {
         $('#timezone').value = config.timezone || 'UTC0';
         $('#max-brightness').value = config.brightness_max || 100;
         $('#max-brightness-val').textContent = `${config.brightness_max || 100}%`;
-        $('#pwm-frequency').value = config.pwm_frequency || 4000;
+        $('#pwm-frequency').value = config.pwm_frequency || 200;
+        $('#pwm-frequency-val').textContent = `${config.pwm_frequency || 200} Hz`;
     } catch (e) {
         console.error('Failed to load config:', e);
     }

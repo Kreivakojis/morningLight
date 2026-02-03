@@ -184,7 +184,8 @@
                 </div>
                 <div class="form-group">
                     <label>PWM Frequency (Hz)</label>
-                    <input type="number" id="pwm-frequency" min="100" max="40000" value="4000" style="width:100%">
+                    <input type="range" id="pwm-frequency" min="100" max="500" value="200">
+                    <span id="pwm-frequency-val">200 Hz</span>
                 </div>
                 <button id="btn-save-settings" class="btn btn-primary btn-full">Save Settings</button>
             </div>
