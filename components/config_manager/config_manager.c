@@ -35,6 +35,14 @@ static void set_defaults(void)
     // Default PWM frequency
     config.pwm_frequency = CONFIG_ML_LED_PWM_FREQ_HZ;
 
+    // Default LED type and count
+#ifdef CONFIG_ML_LED_TYPE_WS2811
+    config.led_type = CONFIG_LED_TYPE_WS2811;
+#else
+    config.led_type = CONFIG_LED_TYPE_PWM;
+#endif
+    config.led_count = CONFIG_ML_LED_COUNT_DEFAULT;
+
     // Default alarm (disabled)
     config.alarms[0].hour = 7;
     config.alarms[0].minute = 0;
@@ -67,7 +75,9 @@ esp_err_t config_manager_init(void)
         err = nvs_get_blob(handle, NVS_KEY_CONFIG, &config, &required_size);
 
         if (err == ESP_OK) {
-            ESP_LOGI(TAG, "Loaded config from NVS");
+            ESP_LOGI(TAG, "Loaded config from NVS (size=%d)", required_size);
+            ESP_LOGI(TAG, "Config values: led_type=%d, led_count=%d, pwm_freq=%lu",
+                     config.led_type, config.led_count, config.pwm_frequency);
         } else {
             ESP_LOGW(TAG, "Failed to read config: %s, using defaults", esp_err_to_name(err));
             set_defaults();

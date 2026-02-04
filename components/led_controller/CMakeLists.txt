@@ -1,5 +1,10 @@
 idf_component_register(
-    SRCS "led_controller.c" "color_utils.c"
+    SRCS
+        "led_controller.c"
+        "led_driver_pwm.c"
+        "led_driver_ws2811.c"
+        "color_utils.c"
     INCLUDE_DIRS "include"
-    REQUIRES esp_driver_ledc esp_event config_manager
+    REQUIRES esp_driver_ledc esp_driver_rmt esp_event config_manager
+    PRIV_REQUIRES espressif__led_strip
 )

@@ -225,6 +225,12 @@ static esp_err_t api_config_get_handler(httpd_req_t *req)
     cJSON_AddNumberToObject(json, "pwm_frequency", config->pwm_frequency);
     cJSON_AddBoolToObject(json, "setup_complete", config->setup_complete);
 
+    // LED configuration
+    cJSON_AddNumberToObject(json, "led_type", config->led_type);
+    cJSON_AddStringToObject(json, "led_type_name",
+        config->led_type == CONFIG_LED_TYPE_WS2811 ? "WS2811" : "PWM");
+    cJSON_AddNumberToObject(json, "led_count", config->led_count);
+
     // WiFi (don't expose password)
     cJSON *wifi = cJSON_AddObjectToObject(json, "wifi");
     cJSON_AddStringToObject(wifi, "ssid", config->wifi.ssid);
@@ -242,6 +248,7 @@ static esp_err_t api_config_post_handler(httpd_req_t *req)
     }
 
     device_config_t *config = config_manager_get();
+    bool restart_required = false;
 
     cJSON *tz = cJSON_GetObjectItem(json, "timezone");
     if (cJSON_IsString(tz)) {
@@ -263,11 +270,38 @@ static esp_err_t api_config_post_handler(httpd_req_t *req)
         }
     }
 
+    // LED type change requires restart
+    cJSON *led_type = cJSON_GetObjectItem(json, "led_type");
+    if (cJSON_IsNumber(led_type)) {
+        uint8_t new_type = (uint8_t)led_type->valuedouble;
+        ESP_LOGI(TAG, "LED type: current=%d, new=%d", config->led_type, new_type);
+        if (new_type != config->led_type) {
+            config->led_type = new_type;
+            restart_required = true;
+        }
+    }
+
+    // LED count change requires restart for WS2811
+    cJSON *led_count = cJSON_GetObjectItem(json, "led_count");
+    if (cJSON_IsNumber(led_count)) {
+        uint16_t new_count = (uint16_t)led_count->valuedouble;
+        ESP_LOGI(TAG, "LED count: current=%d, new=%d", config->led_count, new_count);
+        if (new_count >= 1 && new_count <= 300) {
+            if (new_count != config->led_count && config->led_type == CONFIG_LED_TYPE_WS2811) {
+                restart_required = true;
+            }
+            config->led_count = new_count;
+        }
+    }
+
+    ESP_LOGI(TAG, "Saving config with led_type=%d, led_count=%d", config->led_type, config->led_count);
+
     config_manager_save();
     cJSON_Delete(json);
 
     cJSON *resp = cJSON_CreateObject();
     cJSON_AddBoolToObject(resp, "success", true);
+    cJSON_AddBoolToObject(resp, "restart_required", restart_required);
     return send_json_response(req, resp);
 }
 

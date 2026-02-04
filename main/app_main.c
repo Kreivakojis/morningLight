@@ -115,9 +115,10 @@ void app_main(void)
     ESP_ERROR_CHECK(status_led_init());
     status_led_set_pattern(STATUS_LED_PATTERN_FAST_BLINK);
 
-    ESP_ERROR_CHECK(led_controller_init());
-
+    // Config manager must be initialized before LED controller
     ESP_ERROR_CHECK(config_manager_init());
+
+    ESP_ERROR_CHECK(led_controller_init());
 
     ESP_ERROR_CHECK(button_handler_init());
 

@@ -280,15 +280,37 @@ $('#pwm-frequency').addEventListener('input', (e) => {
     $('#pwm-frequency-val').textContent = `${e.target.value} Hz`;
 });
 
+// LED type selection
+$('#led-type').addEventListener('change', (e) => {
+    const isWS2811 = e.target.value === '1';
+    $('#led-count-group').style.display = isWS2811 ? 'block' : 'none';
+    $('#pwm-freq-group').style.display = isWS2811 ? 'none' : 'block';
+});
+
 $('#btn-save-settings').addEventListener('click', async () => {
+    const ledType = parseInt($('#led-type').value);
     const config = {
         timezone: $('#timezone').value,
         brightness_max: parseInt($('#max-brightness').value),
-        pwm_frequency: parseInt($('#pwm-frequency').value)
+        led_type: ledType,
+        led_count: parseInt($('#led-count').value)
     };
 
-    await api.post('/api/config', config);
-    alert('Settings saved');
+    // Only include PWM frequency for PWM mode
+    if (ledType === 0) {
+        config.pwm_frequency = parseInt($('#pwm-frequency').value);
+    }
+
+    const result = await api.post('/api/config', config);
+
+    if (result.restart_required) {
+        if (confirm('LED settings changed. Device needs to restart. Restart now?')) {
+            // Note: Would need a restart endpoint, for now just inform user
+            alert('Please power cycle the device to apply LED changes.');
+        }
+    } else {
+        alert('Settings saved');
+    }
 });
 
 // Load config
@@ -300,6 +322,16 @@ async function loadConfig() {
         $('#max-brightness-val').textContent = `${config.brightness_max || 100}%`;
         $('#pwm-frequency').value = config.pwm_frequency || 200;
         $('#pwm-frequency-val').textContent = `${config.pwm_frequency || 200} Hz`;
+
+        // LED configuration
+        const ledType = config.led_type || 0;
+        $('#led-type').value = ledType;
+        $('#led-count').value = config.led_count || 30;
+
+        // Show/hide fields based on LED type
+        const isWS2811 = ledType === 1;
+        $('#led-count-group').style.display = isWS2811 ? 'block' : 'none';
+        $('#pwm-freq-group').style.display = isWS2811 ? 'none' : 'block';
     } catch (e) {
         console.error('Failed to load config:', e);
     }

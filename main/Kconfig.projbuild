@@ -81,6 +81,32 @@ menu "MorningLight Configuration"
     endmenu
 
     menu "LED Configuration"
+        choice ML_LED_TYPE
+            prompt "Default LED Type"
+            default ML_LED_TYPE_PWM
+            help
+                Select the default LED type for the device.
+
+            config ML_LED_TYPE_PWM
+                bool "PWM RGB (3-channel)"
+                help
+                    Traditional PWM-controlled RGB LEDs using separate channels
+                    for red, green, and blue.
+
+            config ML_LED_TYPE_WS2811
+                bool "WS2811 Addressable"
+                help
+                    WS2811/WS2812 addressable LED strips. All LEDs will display
+                    the same color (uniform mode for sunrise simulation).
+        endchoice
+
+        config ML_LED_COUNT_DEFAULT
+            int "Default LED Count"
+            default 30
+            range 1 300
+            help
+                Default number of LEDs for WS2811 strips.
+
         config ML_LED_PWM_FREQ_HZ
             int "PWM Frequency (Hz)"
             default 4000

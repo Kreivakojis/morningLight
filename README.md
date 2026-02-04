@@ -21,12 +21,15 @@ ESP32-based sunrise alarm clock with RGB LED control and web interface.
   - Settings page for timezone, brightness limit, and PWM frequency
 
 - **LED Controller**
-  - 12-bit PWM resolution (0-4095)
+  - Two LED types supported (selectable via web UI):
+    - **PWM RGB**: 3-channel PWM for discrete RGB LEDs with MOSFETs
+    - **WS2811 Addressable**: Single-wire addressable LED strips
+  - 12-bit PWM resolution (0-4095) for PWM mode
   - RGB color mixing
   - Gamma correction (2.2) for perceptual brightness
   - Color temperature control (2000K-6500K)
-  - N-channel MOSFET support
-  - Configurable PWM frequency (100-500 Hz, minimum 100Hz enforced by hardware)
+  - Configurable LED count for addressable strips (up to 300 LEDs)
+  - Configurable PWM frequency (100-500 Hz) for PWM mode
   - Smooth fade transitions
 
 - **Sunrise Simulation**
@@ -59,10 +62,10 @@ ESP32-based sunrise alarm clock with RGB LED control and web interface.
 
 | Function | GPIO | Description |
 |----------|------|-------------|
-| Red LED | 25 | PWM output for red channel |
-| Green LED | 26 | PWM output for green channel |
-| Blue LED | 27 | PWM output for blue channel |
-| Addressable LED | 18 | Data line for WS2812 (future) |
+| Red LED | 25 | PWM output for red channel (PWM mode) |
+| Green LED | 26 | PWM output for green channel (PWM mode) |
+| Blue LED | 27 | PWM output for blue channel (PWM mode) |
+| Addressable LED | 18 | Data line for WS2811/WS2812 strips |
 | Reset Button | 0 | Boot button, long press for factory reset |
 | Scenario Button | 4 | Manual light control |
 | Status LED | 2 | Built-in LED for status indication |
@@ -70,11 +73,11 @@ ESP32-based sunrise alarm clock with RGB LED control and web interface.
 ## Hardware
 
 - ESP32 DevKit or compatible board
-- N-channel MOSFETs (e.g., IRLZ44N) for LED switching
-- RGB LED strip or high-power LEDs
-- 12V/24V power supply (depending on LED strip)
+- For PWM mode: N-channel MOSFETs (e.g., IRLZ44N) for LED switching
+- For addressable mode: WS2811 or WS2812 LED strip
+- 5V/12V/24V power supply (depending on LED type)
 
-### MOSFET Wiring (N-channel)
+### PWM Mode - MOSFET Wiring (N-channel)
 
 ```
 ESP32 GPIO ---> MOSFET Gate
@@ -83,6 +86,26 @@ GND        ---> MOSFET Source
 ```
 
 Higher PWM duty cycle = brighter LED output.
+
+### Addressable Mode - WS2811 Wiring
+
+```
+ESP32 GPIO 18 ---> Level Shifter ---> WS2811 DIN
+ESP32 GND     ---> WS2811 GND
+5V/12V        ---> WS2811 VCC
+```
+
+**Important**: WS2811 requires 5V logic levels. The ESP32 outputs 3.3V, so a level shifter is required. A simple N-channel MOSFET level shifter circuit works well:
+
+```
+3.3V ----+---- 10K ----+---- 5V
+         |             |
+    ESP32 GPIO    WS2811 DIN
+         |             |
+         +-- MOSFET ---+
+              Source/Drain
+              (Gate to 3.3V via 10K)
+```
 
 ## Web API
 
@@ -135,7 +158,8 @@ Default settings can be modified in `sdkconfig.defaults` or via `idf.py menuconf
 
 ## Future Features
 
-- [ ] Addressable LED support (WS2812B, SK6812)
+- [x] Addressable LED support (WS2811, WS2812)
+- [ ] SK6812 RGBW support
 - [ ] Multiple sunrise profiles/presets
 - [ ] Sunset simulation (gradual dimming)
 - [ ] Sound/buzzer alarm option

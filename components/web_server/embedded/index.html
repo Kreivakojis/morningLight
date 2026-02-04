@@ -174,6 +174,27 @@
                 <button id="btn-sync-time" class="btn btn-full">Sync Time Now</button>
             </div>
 
+            <!-- LED Settings -->
+            <div class="card">
+                <h2>LED Configuration</h2>
+                <div class="form-group">
+                    <label>LED Type</label>
+                    <select id="led-type">
+                        <option value="0">PWM RGB (3-channel)</option>
+                        <option value="1">WS2811 Addressable</option>
+                    </select>
+                </div>
+                <div class="form-group" id="led-count-group" style="display:none">
+                    <label>Number of LEDs</label>
+                    <input type="number" id="led-count" min="1" max="300" value="30">
+                </div>
+                <div class="form-group" id="pwm-freq-group">
+                    <label>PWM Frequency (Hz)</label>
+                    <input type="range" id="pwm-frequency" min="100" max="500" value="200">
+                    <span id="pwm-frequency-val">200 Hz</span>
+                </div>
+            </div>
+
             <!-- General Settings -->
             <div class="card">
                 <h2>General</h2>
@@ -181,11 +202,6 @@
                     <label>Max Brightness Limit</label>
                     <input type="range" id="max-brightness" min="10" max="100" value="100">
                     <span id="max-brightness-val">100%</span>
-                </div>
-                <div class="form-group">
-                    <label>PWM Frequency (Hz)</label>
-                    <input type="range" id="pwm-frequency" min="100" max="500" value="200">
-                    <span id="pwm-frequency-val">200 Hz</span>
                 </div>
                 <button id="btn-save-settings" class="btn btn-primary btn-full">Save Settings</button>
             </div>

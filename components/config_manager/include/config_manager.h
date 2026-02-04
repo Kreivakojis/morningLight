@@ -31,6 +31,14 @@ typedef struct {
 } alarm_config_t;
 
 /**
+ * @brief LED type enumeration for config storage
+ */
+typedef enum {
+    CONFIG_LED_TYPE_PWM = 0,
+    CONFIG_LED_TYPE_WS2811 = 1,
+} config_led_type_t;
+
+/**
  * @brief Device configuration structure
  */
 typedef struct {
@@ -39,6 +47,8 @@ typedef struct {
     alarm_config_t alarms[8];
     uint8_t brightness_max;
     uint32_t pwm_frequency;     // PWM frequency in Hz (100-40000)
+    uint8_t led_type;           // config_led_type_t: PWM or WS2811
+    uint16_t led_count;         // Number of LEDs (WS2811 mode, 1-300)
     bool setup_complete;
 } device_config_t;
 

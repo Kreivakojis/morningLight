@@ -3,9 +3,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
-#include "driver/ledc.h"
 #include "esp_log.h"
 #include "led_controller.h"
+#include "led_driver.h"
 #include "config_manager.h"
 
 // External color utilities
@@ -13,26 +13,13 @@ extern void color_utils_hsv_to_rgb(uint16_t h, uint8_t s, uint8_t v,
                                    uint8_t *r, uint8_t *g, uint8_t *b);
 extern void color_utils_kelvin_to_rgb(uint16_t kelvin,
                                       uint8_t *r, uint8_t *g, uint8_t *b);
-extern uint32_t color_utils_gamma_correct(uint8_t value, float gamma);
 
 static const char *TAG = "led_ctrl";
 
-// PWM Configuration
-#define LEDC_TIMER          LEDC_TIMER_0
-#define LEDC_MODE           LEDC_LOW_SPEED_MODE
-#define LEDC_DUTY_RES       LEDC_TIMER_12_BIT
-#define LEDC_DUTY_MAX       4095
-#define LEDC_FREQUENCY      CONFIG_ML_LED_PWM_FREQ_HZ
+// Current driver
+static const led_driver_ops_t *driver = NULL;
 
-// Channel assignments
-#define LEDC_CHANNEL_R      LEDC_CHANNEL_0
-#define LEDC_CHANNEL_G      LEDC_CHANNEL_1
-#define LEDC_CHANNEL_B      LEDC_CHANNEL_2
-
-// Gamma correction value
-#define GAMMA_VALUE         2.2f
-
-// State
+// State (for fading, independent of driver)
 static struct {
     uint8_t r, g, b;
     uint8_t brightness;
@@ -46,37 +33,18 @@ static struct {
     uint8_t fade_end_r, fade_end_g, fade_end_b, fade_end_brightness;
     uint32_t fade_duration_ms;
     uint32_t fade_start_time;
+
+    // LED type tracking
+    led_type_t led_type;
+    uint16_t led_count;
 } led_state = {0};
 
-static void apply_pwm(void)
+static void apply_color(void)
 {
-    if (!led_state.initialized) return;
+    if (!led_state.initialized || !driver) return;
 
-    // Apply brightness scaling
-    float brightness_scale = led_state.brightness / 100.0f;
-
-    // Scale RGB by brightness
-    uint8_t scaled_r = (uint8_t)(led_state.r * brightness_scale);
-    uint8_t scaled_g = (uint8_t)(led_state.g * brightness_scale);
-    uint8_t scaled_b = (uint8_t)(led_state.b * brightness_scale);
-
-    // Apply gamma correction to get duty cycle
-    // N-channel MOSFETs: HIGH = ON, higher duty = brighter
-    uint32_t duty_r = color_utils_gamma_correct(scaled_r, GAMMA_VALUE);
-    uint32_t duty_g = color_utils_gamma_correct(scaled_g, GAMMA_VALUE);
-    uint32_t duty_b = color_utils_gamma_correct(scaled_b, GAMMA_VALUE);
-
-    ESP_LOGD(TAG, "PWM duty: R=%lu, G=%lu, B=%lu", duty_r, duty_g, duty_b);
-
-    // Set PWM duty cycles
-    ledc_set_duty(LEDC_MODE, LEDC_CHANNEL_R, duty_r);
-    ledc_update_duty(LEDC_MODE, LEDC_CHANNEL_R);
-
-    ledc_set_duty(LEDC_MODE, LEDC_CHANNEL_G, duty_g);
-    ledc_update_duty(LEDC_MODE, LEDC_CHANNEL_G);
-
-    ledc_set_duty(LEDC_MODE, LEDC_CHANNEL_B, duty_b);
-    ledc_update_duty(LEDC_MODE, LEDC_CHANNEL_B);
+    driver->set_rgb(led_state.r, led_state.g, led_state.b);
+    driver->set_brightness(led_state.brightness);
 }
 
 static void fade_task_fn(void *arg)
@@ -91,7 +59,7 @@ static void fade_task_fn(void *arg)
             led_state.g = led_state.fade_end_g;
             led_state.b = led_state.fade_end_b;
             led_state.brightness = led_state.fade_end_brightness;
-            apply_pwm();
+            apply_color();
             led_state.fading = false;
             xSemaphoreGive(led_state.mutex);
             break;
@@ -107,7 +75,7 @@ static void fade_task_fn(void *arg)
         led_state.b = led_state.fade_start_b + (int)(t * (led_state.fade_end_b - led_state.fade_start_b));
         led_state.brightness = led_state.fade_start_brightness +
                                (int)(t * (led_state.fade_end_brightness - led_state.fade_start_brightness));
-        apply_pwm();
+        apply_color();
         xSemaphoreGive(led_state.mutex);
 
         vTaskDelay(pdMS_TO_TICKS(20)); // 50Hz update rate
@@ -128,54 +96,45 @@ esp_err_t led_controller_init(void)
         return ESP_ERR_NO_MEM;
     }
 
-    // Configure LEDC timer
-    ledc_timer_config_t timer_conf = {
-        .speed_mode = LEDC_MODE,
-        .duty_resolution = LEDC_DUTY_RES,
-        .timer_num = LEDC_TIMER,
-        .freq_hz = LEDC_FREQUENCY,
-        .clk_cfg = LEDC_AUTO_CLK,
-    };
-    ESP_ERROR_CHECK(ledc_timer_config(&timer_conf));
+    // Get LED type from config
+    device_config_t *cfg = config_manager_get();
+    led_type_t led_type = LED_TYPE_PWM;
+    uint16_t led_count = 30;
 
-    // Configure Red channel
-    // Initial duty = 0 = LOW = N-channel MOSFET OFF = LED OFF
-    ledc_channel_config_t ch_conf = {
-        .gpio_num = CONFIG_ML_GPIO_LED_R,
-        .speed_mode = LEDC_MODE,
-        .channel = LEDC_CHANNEL_R,
-        .intr_type = LEDC_INTR_DISABLE,
-        .timer_sel = LEDC_TIMER,
-        .duty = 0,
-        .hpoint = 0,
-    };
-    ESP_ERROR_CHECK(ledc_channel_config(&ch_conf));
+    if (cfg) {
+        ESP_LOGI(TAG, "Config: led_type=%d, led_count=%d", cfg->led_type, cfg->led_count);
+        led_type = (led_type_t)cfg->led_type;
+        led_count = cfg->led_count;
+        if (led_count == 0) led_count = 30;
+    } else {
+        ESP_LOGW(TAG, "Config is NULL, using defaults");
+    }
 
-    // Configure Green channel
-    ch_conf.gpio_num = CONFIG_ML_GPIO_LED_G;
-    ch_conf.channel = LEDC_CHANNEL_G;
-    ch_conf.duty = 0;
-    ESP_ERROR_CHECK(ledc_channel_config(&ch_conf));
+    led_state.led_type = led_type;
+    led_state.led_count = led_count;
 
-    // Configure Blue channel
-    ch_conf.gpio_num = CONFIG_ML_GPIO_LED_B;
-    ch_conf.channel = LEDC_CHANNEL_B;
-    ch_conf.duty = 0;
-    ESP_ERROR_CHECK(ledc_channel_config(&ch_conf));
+    // Select driver based on LED type
+    ESP_LOGI(TAG, "Selecting driver for led_type=%d", led_type);
+    if (led_type == LED_TYPE_WS2811) {
+        driver = &led_driver_ws2811;
+        ESP_LOGI(TAG, "Using WS2811 driver (%d LEDs)", led_count);
+    } else {
+        driver = &led_driver_pwm;
+        ESP_LOGI(TAG, "Using PWM driver");
+    }
+
+    // Initialize driver
+    esp_err_t ret = driver->init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Driver init failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
 
     led_state.initialized = true;
     led_state.brightness = 0;
     led_state.r = led_state.g = led_state.b = 0;
 
-    // Apply saved PWM frequency from config
-    device_config_t *config = config_manager_get();
-    if (config && config->pwm_frequency >= 100 && config->pwm_frequency <= 40000) {
-        ledc_set_freq(LEDC_MODE, LEDC_TIMER, config->pwm_frequency);
-        ESP_LOGI(TAG, "LED controller initialized: freq=%luHz", config->pwm_frequency);
-    } else {
-        ESP_LOGI(TAG, "LED controller initialized: freq=%dHz", LEDC_FREQUENCY);
-    }
-
+    ESP_LOGI(TAG, "LED controller initialized");
     return ESP_OK;
 }
 
@@ -187,7 +146,7 @@ void led_controller_set_rgb(uint8_t r, uint8_t g, uint8_t b)
     led_state.r = r;
     led_state.g = g;
     led_state.b = b;
-    apply_pwm();
+    apply_color();
     xSemaphoreGive(led_state.mutex);
 }
 
@@ -199,7 +158,7 @@ void led_controller_set_brightness(uint8_t brightness)
 
     xSemaphoreTake(led_state.mutex, portMAX_DELAY);
     led_state.brightness = brightness;
-    apply_pwm();
+    apply_color();
     xSemaphoreGive(led_state.mutex);
 }
 
@@ -281,49 +240,50 @@ void led_controller_off(void)
 
 void led_controller_set_duty_raw(uint32_t duty_r, uint32_t duty_g, uint32_t duty_b)
 {
+    // This function is PWM-specific and maintained for backward compatibility
+    // For WS2811, we convert duty to RGB values
     if (!led_state.initialized) return;
 
-    // Clamp values to valid range
-    if (duty_r > LEDC_DUTY_MAX) duty_r = LEDC_DUTY_MAX;
-    if (duty_g > LEDC_DUTY_MAX) duty_g = LEDC_DUTY_MAX;
-    if (duty_b > LEDC_DUTY_MAX) duty_b = LEDC_DUTY_MAX;
+    // Clamp values to valid range (12-bit)
+    if (duty_r > 4095) duty_r = 4095;
+    if (duty_g > 4095) duty_g = 4095;
+    if (duty_b > 4095) duty_b = 4095;
 
-    // N-channel MOSFETs: 0=off, 4095=full on (no inversion needed)
-    ESP_LOGD(TAG, "Raw PWM: R=%lu G=%lu B=%lu", duty_r, duty_g, duty_b);
+    // Convert 12-bit duty to 8-bit RGB
+    uint8_t r = (duty_r * 255) / 4095;
+    uint8_t g = (duty_g * 255) / 4095;
+    uint8_t b = (duty_b * 255) / 4095;
+
+    ESP_LOGD(TAG, "Raw duty: R=%lu G=%lu B=%lu -> RGB(%d,%d,%d)",
+             duty_r, duty_g, duty_b, r, g, b);
 
     xSemaphoreTake(led_state.mutex, portMAX_DELAY);
-
-    ledc_set_duty(LEDC_MODE, LEDC_CHANNEL_R, duty_r);
-    ledc_update_duty(LEDC_MODE, LEDC_CHANNEL_R);
-
-    ledc_set_duty(LEDC_MODE, LEDC_CHANNEL_G, duty_g);
-    ledc_update_duty(LEDC_MODE, LEDC_CHANNEL_G);
-
-    ledc_set_duty(LEDC_MODE, LEDC_CHANNEL_B, duty_b);
-    ledc_update_duty(LEDC_MODE, LEDC_CHANNEL_B);
-
+    led_state.r = r;
+    led_state.g = g;
+    led_state.b = b;
+    led_state.brightness = 100; // Raw mode assumes full brightness
+    apply_color();
     xSemaphoreGive(led_state.mutex);
 }
 
 esp_err_t led_controller_set_frequency(uint32_t freq_hz)
 {
-    if (!led_state.initialized) return ESP_ERR_INVALID_STATE;
-
-    // Clamp to valid range
-    if (freq_hz < 100) freq_hz = 100;
-    if (freq_hz > 40000) freq_hz = 40000;
-
-    ESP_LOGI(TAG, "Setting PWM frequency to %lu Hz", freq_hz);
-
-    esp_err_t ret = ledc_set_freq(LEDC_MODE, LEDC_TIMER, freq_hz);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to set frequency: %s", esp_err_to_name(ret));
-    }
-    return ret;
+    if (!led_state.initialized || !driver) return ESP_ERR_INVALID_STATE;
+    return driver->set_frequency(freq_hz);
 }
 
 uint32_t led_controller_get_frequency(void)
 {
-    if (!led_state.initialized) return 0;
-    return ledc_get_freq(LEDC_MODE, LEDC_TIMER);
+    if (!led_state.initialized || !driver) return 0;
+    return driver->get_frequency();
+}
+
+led_type_t led_controller_get_type(void)
+{
+    return led_state.led_type;
+}
+
+uint16_t led_controller_get_led_count(void)
+{
+    return led_state.led_count;
 }
