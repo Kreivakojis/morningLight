@@ -39,6 +39,16 @@ ESP32-based sunrise alarm clock with RGB LED control and web interface.
   - Color temperature simulation (warm to cool)
   - Per-alarm brightness and color settings
 
+- **Wave Animation Engine**
+  - Parametric sine-wave animations for ambient lighting
+  - 5 configurable presets (2 built-in + 3 custom)
+  - Parameters: wavelength, amplitude, speed, base brightness, variation, color temperature
+  - **WS2811 mode**: True spatial wave - each LED has independent brightness based on position
+  - **PWM mode**: Temporal wave - all LEDs pulse together over time
+  - Organic variation using value noise for natural-looking movement
+  - Web UI controls for real-time parameter adjustment
+  - Mutual exclusion with sunrise (animation stops when sunrise starts and vice versa)
+
 - **Time Management**
   - NTP synchronization (pool.ntp.org, time.google.com)
   - Configurable timezone (UTC-12 to UTC+14)
@@ -120,6 +130,10 @@ ESP32 GND     ---> WS2811 GND
 | `/api/alarms` | POST | Create/update alarm |
 | `/api/led/test` | POST | Test LED (color_temp, brightness, off) |
 | `/api/time/sync` | POST | Force NTP sync |
+| `/api/animation/presets` | GET | Get all animation presets |
+| `/api/animation/presets` | POST | Update animation preset |
+| `/api/animation/start` | POST | Start animation (preset_id) |
+| `/api/animation/stop` | POST | Stop running animation |
 
 ## Building
 
@@ -155,12 +169,14 @@ Default settings can be modified in `sdkconfig.defaults` or via `idf.py menuconf
 - `ML_LED_MAX_BRIGHTNESS` - Maximum brightness limit
 - `ML_WIFI_AP_SSID_PREFIX` - AP mode SSID prefix
 - `ML_SUNRISE_DEFAULT_DURATION_MIN` - Default sunrise duration
+- `ML_ANIM_UPDATE_INTERVAL_MS` - Animation frame rate (default 33ms = ~30fps)
+- `ML_ANIM_TASK_STACK_SIZE` - Animation task stack size
 
 ## Future Features
 
 - [x] Addressable LED support (WS2811, WS2812)
+- [x] Wave animation engine with spatial effects
 - [ ] SK6812 RGBW support
-- [ ] Multiple sunrise profiles/presets
 - [ ] Sunset simulation (gradual dimming)
 - [ ] Sound/buzzer alarm option
 - [ ] MQTT integration for smart home systems

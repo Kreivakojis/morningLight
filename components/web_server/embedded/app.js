@@ -18,6 +18,7 @@ const api = {
 // State
 let alarms = [];
 let status = {};
+let animationPresets = [];
 
 // DOM elements
 const $ = (sel) => document.querySelector(sel);
@@ -337,10 +338,126 @@ async function loadConfig() {
     }
 }
 
+// Animation
+async function loadAnimationPresets() {
+    try {
+        const data = await api.get('/api/animation/presets');
+        animationPresets = data.presets || [];
+
+        // Update preset dropdown
+        const select = $('#anim-preset');
+        select.innerHTML = animationPresets.map(p =>
+            `<option value="${p.id}">${p.name}</option>`
+        ).join('');
+
+        // Update status
+        $('#anim-running').textContent = data.running ? 'Running' : 'Stopped';
+        $('#anim-running').style.color = data.running ? '#4caf50' : '';
+
+        // Load first preset into form
+        if (animationPresets.length > 0) {
+            loadPresetIntoForm(0);
+        }
+    } catch (e) {
+        console.error('Failed to load animation presets:', e);
+    }
+}
+
+function loadPresetIntoForm(id) {
+    const preset = animationPresets.find(p => p.id === id);
+    if (!preset) return;
+
+    $('#anim-name').value = preset.name;
+    $('#anim-wavelength').value = preset.wavelength;
+    $('#anim-wavelength-val').textContent = preset.wavelength;
+    $('#anim-amplitude').value = preset.amplitude;
+    $('#anim-amplitude-val').textContent = `${preset.amplitude}%`;
+    $('#anim-speed').value = Math.round(preset.speed * 10);
+    $('#anim-speed-val').textContent = `${preset.speed.toFixed(1)} Hz`;
+    $('#anim-base').value = preset.base_brightness;
+    $('#anim-base-val').textContent = `${preset.base_brightness}%`;
+    $('#anim-variation').value = preset.variation;
+    $('#anim-variation-val').textContent = `${preset.variation}%`;
+    $('#anim-color-temp').value = preset.color_temp;
+    $('#anim-color-temp-val').textContent = `${preset.color_temp}K`;
+}
+
+$('#anim-preset').addEventListener('change', (e) => {
+    loadPresetIntoForm(parseInt(e.target.value));
+});
+
+// Animation slider value updates
+$('#anim-wavelength').addEventListener('input', (e) => {
+    $('#anim-wavelength-val').textContent = e.target.value;
+});
+
+$('#anim-amplitude').addEventListener('input', (e) => {
+    $('#anim-amplitude-val').textContent = `${e.target.value}%`;
+});
+
+$('#anim-speed').addEventListener('input', (e) => {
+    const speed = e.target.value / 10;
+    $('#anim-speed-val').textContent = `${speed.toFixed(1)} Hz`;
+});
+
+$('#anim-base').addEventListener('input', (e) => {
+    $('#anim-base-val').textContent = `${e.target.value}%`;
+});
+
+$('#anim-variation').addEventListener('input', (e) => {
+    $('#anim-variation-val').textContent = `${e.target.value}%`;
+});
+
+$('#anim-color-temp').addEventListener('input', (e) => {
+    $('#anim-color-temp-val').textContent = `${e.target.value}K`;
+});
+
+// Save animation preset
+$('#anim-save').addEventListener('click', async () => {
+    const id = parseInt($('#anim-preset').value);
+    const preset = {
+        id: id,
+        name: $('#anim-name').value,
+        wavelength: parseFloat($('#anim-wavelength').value),
+        amplitude: parseInt($('#anim-amplitude').value),
+        speed: parseInt($('#anim-speed').value) / 10,
+        base_brightness: parseInt($('#anim-base').value),
+        variation: parseInt($('#anim-variation').value),
+        color_temp: parseInt($('#anim-color-temp').value)
+    };
+
+    const result = await api.post('/api/animation/presets', preset);
+    if (result.success) {
+        // Reload presets to update dropdown
+        await loadAnimationPresets();
+        alert('Preset saved');
+    }
+});
+
+// Start animation
+$('#anim-start').addEventListener('click', async () => {
+    const presetId = parseInt($('#anim-preset').value);
+    const result = await api.post('/api/animation/start', { preset_id: presetId });
+    if (result.success) {
+        $('#anim-running').textContent = 'Running';
+        $('#anim-running').style.color = '#4caf50';
+    } else {
+        alert('Failed to start animation: ' + (result.error || 'Unknown error'));
+    }
+});
+
+// Stop animation
+$('#anim-stop').addEventListener('click', async () => {
+    await api.post('/api/animation/stop', {});
+    $('#anim-running').textContent = 'Stopped';
+    $('#anim-running').style.color = '';
+});
+
 // Init
 updateStatus();
 loadAlarms();
 loadConfig();
+loadAnimationPresets();
 
 // Poll status every 5 seconds
 setInterval(updateStatus, 5000);

@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "esp_err.h"
+#include "animation_preset.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -50,6 +51,10 @@ typedef struct {
     uint8_t led_type;           // config_led_type_t: PWM or WS2811
     uint16_t led_count;         // Number of LEDs (WS2811 mode, 1-300)
     bool setup_complete;
+
+    // Animation presets
+    animation_preset_t animation_presets[ANIMATION_MAX_PRESETS];
+    int8_t active_animation;    // -1 = none, 0-4 = preset index
 } device_config_t;
 
 /**

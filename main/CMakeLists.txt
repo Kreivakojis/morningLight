@@ -10,6 +10,7 @@ idf_component_register(
         config_manager
         time_manager
         sunrise_engine
+        animation_engine
         button_handler
         esp_event
         nvs_flash

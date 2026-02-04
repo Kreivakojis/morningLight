@@ -54,6 +54,19 @@ typedef struct led_driver_ops {
      * @return Frequency in Hz, or 0 if not applicable
      */
     uint32_t (*get_frequency)(void);
+
+    /**
+     * @brief Set per-LED brightness values (for wave animations)
+     *
+     * For WS2811: Each LED gets independent brightness based on position (spatial wave)
+     * For PWM: Uses first element only (temporal wave, all LEDs same brightness)
+     *
+     * The base RGB color should be set first via set_rgb().
+     *
+     * @param brightness_array Array of brightness percentages (0-100) for each LED
+     * @param count Number of elements in the array
+     */
+    void (*set_pixel_brightnesses)(const uint8_t *brightness_array, uint16_t count);
 } led_driver_ops_t;
 
 /**

@@ -10,6 +10,10 @@
 #include "time_manager.h"
 #include "led_controller.h"
 
+// Forward declarations for animation_engine (to avoid circular dependency)
+extern bool animation_engine_is_running(void);
+extern void animation_engine_stop(void);
+
 // External curve functions
 extern float sunrise_curve_apply(sunrise_curve_t curve, float t);
 
@@ -152,6 +156,12 @@ static void check_schedule(void)
 
     // Check if it's time to start (within 1 minute window)
     if (state.minutes_until_alarm <= 0 && state.state != SUNRISE_STATE_ACTIVE) {
+        // Stop any running animation
+        if (animation_engine_is_running()) {
+            ESP_LOGI(TAG, "Stopping animation for scheduled sunrise");
+            animation_engine_stop();
+        }
+
         ESP_LOGI(TAG, "Starting sunrise #%d: %dmin, %dK, %d%%",
                  alarm_id, next->duration_min, next->color_temp, next->brightness);
 
@@ -251,6 +261,12 @@ esp_err_t sunrise_engine_start_manual(uint8_t duration_min, uint16_t color_temp,
     if (state.state == SUNRISE_STATE_ACTIVE) {
         ESP_LOGW(TAG, "Sunrise already active");
         return ESP_ERR_INVALID_STATE;
+    }
+
+    // Stop any running animation
+    if (animation_engine_is_running()) {
+        ESP_LOGI(TAG, "Stopping animation for sunrise");
+        animation_engine_stop();
     }
 
     ESP_LOGI(TAG, "Starting manual sunrise: %d min, %dK, %d%%",

@@ -156,6 +156,50 @@ static uint32_t ws2811_get_frequency(void)
     return 0;
 }
 
+static void ws2811_set_pixel_brightnesses(const uint8_t *brightness_array, uint16_t count)
+{
+    if (!ws2811_state.initialized || !ws2811_state.strip) {
+        return;
+    }
+    if (brightness_array == NULL || count == 0) {
+        return;
+    }
+    if (count > ws2811_state.led_count) {
+        count = ws2811_state.led_count;
+    }
+
+    // Apply per-LED brightness to the base RGB color
+    for (uint16_t i = 0; i < count; i++) {
+        uint8_t brightness = brightness_array[i];
+        if (brightness > 100) brightness = 100;
+
+        float scale = brightness / 100.0f;
+        uint8_t scaled_r = (uint8_t)(ws2811_state.r * scale);
+        uint8_t scaled_g = (uint8_t)(ws2811_state.g * scale);
+        uint8_t scaled_b = (uint8_t)(ws2811_state.b * scale);
+
+        // Apply gamma correction
+        uint32_t gamma_r = color_utils_gamma_correct(scaled_r, GAMMA_VALUE);
+        uint32_t gamma_g = color_utils_gamma_correct(scaled_g, GAMMA_VALUE);
+        uint32_t gamma_b = color_utils_gamma_correct(scaled_b, GAMMA_VALUE);
+
+        // Convert 12-bit to 8-bit
+        uint8_t out_r = (gamma_r * 255) / 4095;
+        uint8_t out_g = (gamma_g * 255) / 4095;
+        uint8_t out_b = (gamma_b * 255) / 4095;
+
+        // WS2811 color order correction: swap G and B
+        led_strip_set_pixel(ws2811_state.strip, i, out_r, out_b, out_g);
+    }
+
+    // Fill remaining LEDs with zero if count < led_count
+    for (uint16_t i = count; i < ws2811_state.led_count; i++) {
+        led_strip_set_pixel(ws2811_state.strip, i, 0, 0, 0);
+    }
+
+    led_strip_refresh(ws2811_state.strip);
+}
+
 // Export WS2811 driver operations
 const led_driver_ops_t led_driver_ws2811 = {
     .init = ws2811_init,
@@ -164,4 +208,5 @@ const led_driver_ops_t led_driver_ws2811 = {
     .get_brightness = ws2811_get_brightness,
     .set_frequency = ws2811_set_frequency,
     .get_frequency = ws2811_get_frequency,
+    .set_pixel_brightnesses = ws2811_set_pixel_brightnesses,
 };

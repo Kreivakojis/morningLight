@@ -18,6 +18,7 @@
         <nav>
             <button class="nav-btn active" data-page="home">Home</button>
             <button class="nav-btn" data-page="alarms">Alarms</button>
+            <button class="nav-btn" data-page="animation">Animation</button>
             <button class="nav-btn" data-page="settings">Settings</button>
         </nav>
 
@@ -118,6 +119,68 @@
                             <button type="submit" class="btn btn-primary">Save</button>
                         </div>
                     </form>
+                </div>
+            </div>
+        </section>
+
+        <!-- Animation Page -->
+        <section id="page-animation" class="page">
+            <div class="card">
+                <h2>Wave Animation</h2>
+                <div class="form-group">
+                    <label>Preset</label>
+                    <select id="anim-preset">
+                        <option value="0">Gentle</option>
+                        <option value="1">Ocean</option>
+                        <option value="2">Custom 3</option>
+                        <option value="3">Custom 4</option>
+                        <option value="4">Custom 5</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Name</label>
+                    <input type="text" id="anim-name" maxlength="11" value="Gentle">
+                </div>
+                <div class="form-group">
+                    <label>Wavelength (LEDs)</label>
+                    <input type="range" id="anim-wavelength" min="2" max="100" value="30">
+                    <span id="anim-wavelength-val">30</span>
+                </div>
+                <div class="form-group">
+                    <label>Amplitude</label>
+                    <input type="range" id="anim-amplitude" min="0" max="100" value="50">
+                    <span id="anim-amplitude-val">50%</span>
+                </div>
+                <div class="form-group">
+                    <label>Speed</label>
+                    <input type="range" id="anim-speed" min="0" max="50" value="5">
+                    <span id="anim-speed-val">0.5 Hz</span>
+                </div>
+                <div class="form-group">
+                    <label>Base Brightness</label>
+                    <input type="range" id="anim-base" min="0" max="100" value="50">
+                    <span id="anim-base-val">50%</span>
+                </div>
+                <div class="form-group">
+                    <label>Variation</label>
+                    <input type="range" id="anim-variation" min="0" max="100" value="20">
+                    <span id="anim-variation-val">20%</span>
+                </div>
+                <div class="form-group">
+                    <label>Color Temperature</label>
+                    <input type="range" id="anim-color-temp" min="2000" max="6500" value="3000">
+                    <span id="anim-color-temp-val">3000K</span>
+                </div>
+                <div class="btn-row">
+                    <button id="anim-save" class="btn">Save Preset</button>
+                </div>
+                <div class="btn-row" style="margin-top:10px">
+                    <button id="anim-start" class="btn btn-primary">Start</button>
+                    <button id="anim-stop" class="btn">Stop</button>
+                </div>
+                <div id="anim-status" class="status-item" style="margin-top:15px;text-align:center">
+                    <span class="label">Status:</span>
+                    <span id="anim-running" class="value">Stopped</span>
                 </div>
             </div>
         </section>

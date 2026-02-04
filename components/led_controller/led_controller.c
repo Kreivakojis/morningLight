@@ -298,3 +298,14 @@ uint16_t led_controller_get_led_count(void)
 {
     return led_state.led_count;
 }
+
+void led_controller_set_pixel_brightnesses(const uint8_t *brightness_array, uint16_t count)
+{
+    if (!led_state.initialized || !driver || !driver->set_pixel_brightnesses) {
+        return;
+    }
+
+    xSemaphoreTake(led_state.mutex, portMAX_DELAY);
+    driver->set_pixel_brightnesses(brightness_array, count);
+    xSemaphoreGive(led_state.mutex);
+}

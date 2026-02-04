@@ -140,6 +140,19 @@ led_type_t led_controller_get_type(void);
  */
 uint16_t led_controller_get_led_count(void);
 
+/**
+ * @brief Set per-LED brightness values (for wave animations)
+ *
+ * For WS2811: Each LED gets independent brightness (spatial wave effect)
+ * For PWM: Uses first value only (temporal wave, all LEDs same brightness)
+ *
+ * The base RGB color should be set first via led_controller_set_rgb().
+ *
+ * @param brightness_array Array of brightness percentages (0-100) for each LED
+ * @param count Number of elements in the array
+ */
+void led_controller_set_pixel_brightnesses(const uint8_t *brightness_array, uint16_t count);
+
 #ifdef __cplusplus
 }
 #endif

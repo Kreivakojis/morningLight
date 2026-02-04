@@ -15,6 +15,7 @@
 #include "config_manager.h"
 #include "time_manager.h"
 #include "sunrise_engine.h"
+#include "animation_engine.h"
 #include "button_handler.h"
 
 static const char *TAG = "app_main";
@@ -125,6 +126,8 @@ void app_main(void)
     ESP_ERROR_CHECK(time_manager_init());
 
     ESP_ERROR_CHECK(sunrise_engine_init());
+
+    ESP_ERROR_CHECK(animation_engine_init());
 
     // Initialize WiFi - this will start AP or STA mode based on config
     ESP_ERROR_CHECK(wifi_manager_init());

@@ -13,6 +13,7 @@
 #include "time_manager.h"
 #include "led_controller.h"
 #include "sunrise_engine.h"
+#include "animation_engine.h"
 #include "dns_server.h"
 
 static const char *TAG = "web_server";
@@ -406,6 +407,11 @@ static esp_err_t api_led_test_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
+    // Stop any running animation before LED test
+    if (animation_engine_is_running()) {
+        animation_engine_stop();
+    }
+
     cJSON *off = cJSON_GetObjectItem(json, "off");
     cJSON *color_temp = cJSON_GetObjectItem(json, "color_temp");
     cJSON *brightness = cJSON_GetObjectItem(json, "brightness");
@@ -430,6 +436,157 @@ static esp_err_t api_led_test_handler(httpd_req_t *req)
 static esp_err_t api_time_sync_handler(httpd_req_t *req)
 {
     time_manager_force_sync();
+
+    cJSON *resp = cJSON_CreateObject();
+    cJSON_AddBoolToObject(resp, "success", true);
+    return send_json_response(req, resp);
+}
+
+// GET /api/animation/presets
+static esp_err_t api_animation_presets_get_handler(httpd_req_t *req)
+{
+    device_config_t *config = config_manager_get();
+    cJSON *json = cJSON_CreateObject();
+    cJSON *presets = cJSON_AddArrayToObject(json, "presets");
+
+    for (int i = 0; i < ANIMATION_MAX_PRESETS; i++) {
+        animation_preset_t *p = &config->animation_presets[i];
+        cJSON *preset = cJSON_CreateObject();
+        cJSON_AddNumberToObject(preset, "id", i);
+        cJSON_AddStringToObject(preset, "name", p->name);
+        cJSON_AddNumberToObject(preset, "wavelength", p->wavelength);
+        cJSON_AddNumberToObject(preset, "amplitude", p->amplitude);
+        cJSON_AddNumberToObject(preset, "speed", p->speed);
+        cJSON_AddNumberToObject(preset, "base_brightness", p->base_brightness);
+        cJSON_AddNumberToObject(preset, "variation", p->variation);
+        cJSON_AddNumberToObject(preset, "color_temp", p->color_temp);
+        cJSON_AddItemToArray(presets, preset);
+    }
+
+    cJSON_AddNumberToObject(json, "active", animation_engine_get_active_preset());
+    cJSON_AddBoolToObject(json, "running", animation_engine_is_running());
+
+    return send_json_response(req, json);
+}
+
+// POST /api/animation/presets
+static esp_err_t api_animation_presets_post_handler(httpd_req_t *req)
+{
+    cJSON *json = parse_json_body(req);
+    if (json == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    cJSON *id_item = cJSON_GetObjectItem(json, "id");
+    if (!cJSON_IsNumber(id_item)) {
+        cJSON_Delete(json);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing preset id");
+        return ESP_FAIL;
+    }
+
+    int id = (int)id_item->valuedouble;
+    if (id < 0 || id >= ANIMATION_MAX_PRESETS) {
+        cJSON_Delete(json);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid preset id");
+        return ESP_FAIL;
+    }
+
+    animation_preset_t *preset = animation_engine_get_preset(id);
+    if (!preset) {
+        cJSON_Delete(json);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to get preset");
+        return ESP_FAIL;
+    }
+
+    // Update preset fields
+    cJSON *name = cJSON_GetObjectItem(json, "name");
+    if (cJSON_IsString(name)) {
+        strncpy(preset->name, name->valuestring, sizeof(preset->name) - 1);
+        preset->name[sizeof(preset->name) - 1] = '\0';
+    }
+
+    cJSON *wavelength = cJSON_GetObjectItem(json, "wavelength");
+    if (cJSON_IsNumber(wavelength)) {
+        preset->wavelength = (float)wavelength->valuedouble;
+        if (preset->wavelength < 2.0f) preset->wavelength = 2.0f;
+        if (preset->wavelength > 300.0f) preset->wavelength = 300.0f;
+    }
+
+    cJSON *amplitude = cJSON_GetObjectItem(json, "amplitude");
+    if (cJSON_IsNumber(amplitude)) {
+        preset->amplitude = (uint8_t)amplitude->valuedouble;
+        if (preset->amplitude > 100) preset->amplitude = 100;
+    }
+
+    cJSON *speed = cJSON_GetObjectItem(json, "speed");
+    if (cJSON_IsNumber(speed)) {
+        preset->speed = (float)speed->valuedouble;
+        if (preset->speed < 0.0f) preset->speed = 0.0f;
+        if (preset->speed > 5.0f) preset->speed = 5.0f;
+    }
+
+    cJSON *base = cJSON_GetObjectItem(json, "base_brightness");
+    if (cJSON_IsNumber(base)) {
+        preset->base_brightness = (uint8_t)base->valuedouble;
+        if (preset->base_brightness > 100) preset->base_brightness = 100;
+    }
+
+    cJSON *variation = cJSON_GetObjectItem(json, "variation");
+    if (cJSON_IsNumber(variation)) {
+        preset->variation = (uint8_t)variation->valuedouble;
+        if (preset->variation > 100) preset->variation = 100;
+    }
+
+    cJSON *color_temp = cJSON_GetObjectItem(json, "color_temp");
+    if (cJSON_IsNumber(color_temp)) {
+        preset->color_temp = (uint16_t)color_temp->valuedouble;
+        if (preset->color_temp < 2000) preset->color_temp = 2000;
+        if (preset->color_temp > 6500) preset->color_temp = 6500;
+    }
+
+    config_manager_save();
+    cJSON_Delete(json);
+
+    cJSON *resp = cJSON_CreateObject();
+    cJSON_AddBoolToObject(resp, "success", true);
+    cJSON_AddNumberToObject(resp, "id", id);
+    return send_json_response(req, resp);
+}
+
+// POST /api/animation/start
+static esp_err_t api_animation_start_handler(httpd_req_t *req)
+{
+    cJSON *json = parse_json_body(req);
+    if (json == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    cJSON *preset_id = cJSON_GetObjectItem(json, "preset_id");
+    if (!cJSON_IsNumber(preset_id)) {
+        cJSON_Delete(json);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing preset_id");
+        return ESP_FAIL;
+    }
+
+    int id = (int)preset_id->valuedouble;
+    cJSON_Delete(json);
+
+    esp_err_t ret = animation_engine_start(id);
+
+    cJSON *resp = cJSON_CreateObject();
+    cJSON_AddBoolToObject(resp, "success", ret == ESP_OK);
+    if (ret != ESP_OK) {
+        cJSON_AddStringToObject(resp, "error", esp_err_to_name(ret));
+    }
+    return send_json_response(req, resp);
+}
+
+// POST /api/animation/stop
+static esp_err_t api_animation_stop_handler(httpd_req_t *req)
+{
+    animation_engine_stop();
 
     cJSON *resp = cJSON_CreateObject();
     cJSON_AddBoolToObject(resp, "success", true);
@@ -479,6 +636,7 @@ esp_err_t web_server_start(void)
     config.uri_match_fn = httpd_uri_match_wildcard;
     config.max_uri_handlers = 20;
     config.lru_purge_enable = true;
+    config.max_open_sockets = 7;  // Reduced to avoid socket exhaustion
 
     esp_err_t ret = httpd_start(&server, &config);
     if (ret != ESP_OK) {
@@ -502,6 +660,12 @@ esp_err_t web_server_start(void)
     httpd_uri_t api_led_test = { .uri = "/api/led/test", .method = HTTP_POST, .handler = api_led_test_handler };
     httpd_uri_t api_time_sync = { .uri = "/api/time/sync", .method = HTTP_POST, .handler = api_time_sync_handler };
 
+    // Animation endpoints
+    httpd_uri_t api_anim_presets_get = { .uri = "/api/animation/presets", .method = HTTP_GET, .handler = api_animation_presets_get_handler };
+    httpd_uri_t api_anim_presets_post = { .uri = "/api/animation/presets", .method = HTTP_POST, .handler = api_animation_presets_post_handler };
+    httpd_uri_t api_anim_start = { .uri = "/api/animation/start", .method = HTTP_POST, .handler = api_animation_start_handler };
+    httpd_uri_t api_anim_stop = { .uri = "/api/animation/stop", .method = HTTP_POST, .handler = api_animation_stop_handler };
+
     // CORS preflight
     httpd_uri_t options = { .uri = "/api/*", .method = HTTP_OPTIONS, .handler = options_handler };
 
@@ -517,6 +681,10 @@ esp_err_t web_server_start(void)
     httpd_register_uri_handler(server, &api_alarms_post);
     httpd_register_uri_handler(server, &api_led_test);
     httpd_register_uri_handler(server, &api_time_sync);
+    httpd_register_uri_handler(server, &api_anim_presets_get);
+    httpd_register_uri_handler(server, &api_anim_presets_post);
+    httpd_register_uri_handler(server, &api_anim_start);
+    httpd_register_uri_handler(server, &api_anim_stop);
     httpd_register_uri_handler(server, &options);
 
     // 404 handler for captive portal

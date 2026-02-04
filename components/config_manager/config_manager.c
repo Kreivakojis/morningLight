@@ -53,6 +53,38 @@ static void set_defaults(void)
     config.alarms[0].enabled = false;
 
     config.setup_complete = false;
+
+    // Default animation presets
+    config.active_animation = -1;  // No animation active by default
+
+    // Preset 0: Gentle Wave
+    strncpy(config.animation_presets[0].name, "Gentle", 11);
+    config.animation_presets[0].wavelength = 30.0f;
+    config.animation_presets[0].amplitude = 30;
+    config.animation_presets[0].speed = 0.2f;
+    config.animation_presets[0].base_brightness = 50;
+    config.animation_presets[0].variation = 20;
+    config.animation_presets[0].color_temp = 3000;
+
+    // Preset 1: Ocean
+    strncpy(config.animation_presets[1].name, "Ocean", 11);
+    config.animation_presets[1].wavelength = 50.0f;
+    config.animation_presets[1].amplitude = 50;
+    config.animation_presets[1].speed = 0.3f;
+    config.animation_presets[1].base_brightness = 40;
+    config.animation_presets[1].variation = 40;
+    config.animation_presets[1].color_temp = 4500;
+
+    // Presets 2-4: Custom presets (user configurable)
+    for (int i = 2; i < ANIMATION_MAX_PRESETS; i++) {
+        snprintf(config.animation_presets[i].name, 12, "Custom %d", i + 1);
+        config.animation_presets[i].wavelength = 20.0f;
+        config.animation_presets[i].amplitude = 50;
+        config.animation_presets[i].speed = 0.5f;
+        config.animation_presets[i].base_brightness = 50;
+        config.animation_presets[i].variation = 0;
+        config.animation_presets[i].color_temp = 3500;
+    }
 }
 
 esp_err_t config_manager_init(void)

@@ -163,6 +163,19 @@ static uint32_t pwm_get_frequency(void)
     return ledc_get_freq(LEDC_MODE, LEDC_TIMER);
 }
 
+static void pwm_set_pixel_brightnesses(const uint8_t *brightness_array, uint16_t count)
+{
+    // PWM mode: all LEDs share same output, use first brightness value (temporal wave)
+    if (!pwm_state.initialized || brightness_array == NULL || count == 0) {
+        return;
+    }
+
+    uint8_t brightness = brightness_array[0];
+    if (brightness > 100) brightness = 100;
+    pwm_state.brightness = brightness;
+    apply_pwm();
+}
+
 // Export PWM driver operations
 const led_driver_ops_t led_driver_pwm = {
     .init = pwm_init,
@@ -171,4 +184,5 @@ const led_driver_ops_t led_driver_pwm = {
     .get_brightness = pwm_get_brightness,
     .set_frequency = pwm_set_frequency,
     .get_frequency = pwm_get_frequency,
+    .set_pixel_brightnesses = pwm_set_pixel_brightnesses,
 };

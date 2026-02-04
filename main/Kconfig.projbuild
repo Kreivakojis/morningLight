@@ -171,4 +171,20 @@ menu "MorningLight Configuration"
                 Milliseconds between brightness updates during sunrise.
     endmenu
 
+    menu "Animation Configuration"
+        config ML_ANIM_UPDATE_INTERVAL_MS
+            int "Animation Update Interval (ms)"
+            default 33
+            range 16 100
+            help
+                Milliseconds between animation frame updates.
+                33ms = ~30fps, 16ms = ~60fps.
+
+        config ML_ANIM_TASK_STACK_SIZE
+            int "Animation Task Stack Size"
+            default 4096
+            help
+                Stack size for the animation FreeRTOS task.
+    endmenu
+
 endmenu
