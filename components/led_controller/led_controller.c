@@ -176,14 +176,25 @@ void led_controller_set_hsv(uint16_t h, uint8_t s, uint8_t v)
 
 void led_controller_set_color_temp(uint16_t kelvin, uint8_t brightness)
 {
+    if (!led_state.initialized) return;
+
     uint8_t r, g, b;
     color_utils_kelvin_to_rgb(kelvin, &r, &g, &b);
+
+    if (brightness > 100) brightness = 100;
 
     ESP_LOGD(TAG, "set_color_temp: %dK @ %d%% -> RGB(%d,%d,%d)",
              kelvin, brightness, r, g, b);
 
-    led_controller_set_rgb(r, g, b);
-    led_controller_set_brightness(brightness);
+    // Set both RGB and brightness atomically with single apply_color() call
+    // to avoid multiple LED strip refreshes
+    xSemaphoreTake(led_state.mutex, portMAX_DELAY);
+    led_state.r = r;
+    led_state.g = g;
+    led_state.b = b;
+    led_state.brightness = brightness;
+    apply_color();
+    xSemaphoreGive(led_state.mutex);
 }
 
 void led_controller_fade_to(uint8_t r, uint8_t g, uint8_t b,

@@ -51,7 +51,7 @@ static void update_pixels(void)
     uint8_t out_g = (gamma_g * 255) / 4095;
     uint8_t out_b = (gamma_b * 255) / 4095;
 
-    ESP_LOGI(TAG, "LED update: RGB(%d,%d,%d) bright=%d%% -> out RGB(%d,%d,%d)",
+    ESP_LOGD(TAG, "LED update: RGB(%d,%d,%d) bright=%d%% -> out RGB(%d,%d,%d)",
              ws2811_state.r, ws2811_state.g, ws2811_state.b,
              ws2811_state.brightness, out_r, out_g, out_b);
 
@@ -65,8 +65,6 @@ static void update_pixels(void)
     esp_err_t ret = led_strip_refresh(ws2811_state.strip);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "LED strip refresh failed: %s", esp_err_to_name(ret));
-    } else {
-        ESP_LOGI(TAG, "LED strip refresh complete");
     }
 }
 
@@ -98,8 +96,8 @@ static esp_err_t ws2811_init(void)
     led_strip_rmt_config_t rmt_config = {
         .clk_src = RMT_CLK_SRC_DEFAULT,
         .resolution_hz = 10 * 1000 * 1000, // 10MHz
-        .mem_block_symbols = 64,
-        .flags.with_dma = false,
+        .mem_block_symbols = 128,  // Larger buffer for more stable transmission
+        .flags.with_dma = false,   // DMA causes crashes on some ESP32 variants
     };
 
     esp_err_t ret = led_strip_new_rmt_device(&strip_config, &rmt_config, &ws2811_state.strip);
@@ -124,10 +122,11 @@ static void ws2811_set_rgb(uint8_t r, uint8_t g, uint8_t b)
 {
     if (!ws2811_state.initialized) return;
 
+    // Just store values - don't refresh here
+    // set_brightness() will trigger the actual refresh
     ws2811_state.r = r;
     ws2811_state.g = g;
     ws2811_state.b = b;
-    update_pixels();
 }
 
 static void ws2811_set_brightness(uint8_t brightness)
