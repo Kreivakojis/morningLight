@@ -135,6 +135,37 @@ ESP32 GND     ---> WS2811 GND
 | `/api/animation/start` | POST | Start animation (preset_id) |
 | `/api/animation/stop` | POST | Stop running animation |
 
+## Wave Animation Parameters
+
+The wave animation creates a moving sine-wave pattern across the LED strip. The brightness of each LED is calculated using:
+
+```
+brightness(x, t) = base + amplitude × sin(spatial_phase + temporal_phase) × variation
+```
+
+### Parameter Reference
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| **Wavelength** | 2-300 LEDs | Distance between wave peaks. Lower values create tighter waves, higher values create gentle rolling effects. |
+| **Amplitude** | 0-100% | Contrast between brightest and dimmest points. 0% = flat brightness, 100% = full range from dark to bright. |
+| **Speed** | 0.0-5.0 Hz | How fast the wave moves. 0.5 Hz = one complete wave cycle every 2 seconds. |
+| **Base Brightness** | 0-100% | The center brightness level around which the wave oscillates. |
+| **Variation** | 0-100% | Adds organic randomness using value noise. 0% = pure sine wave, higher values add natural-looking irregularity. |
+| **Color Temperature** | 2000-6500K | The color of the light from warm (2000K) to cool daylight (6500K). |
+
+### Built-in Presets
+
+| Preset | Wavelength | Amplitude | Speed | Base | Variation | Color |
+|--------|------------|-----------|-------|------|-----------|-------|
+| **Gentle** | 30 LEDs | 30% | 0.2 Hz | 50% | 20% | 3000K |
+| **Ocean** | 50 LEDs | 50% | 0.3 Hz | 40% | 40% | 4500K |
+
+### LED Type Behavior
+
+- **WS2811 (Addressable)**: True spatial wave - each LED displays a different brightness based on its position, creating a visible wave traveling along the strip.
+- **PWM (3-channel)**: Temporal wave only - all LEDs share the same output, so they pulse together over time. The wavelength parameter has no visible effect in this mode.
+
 ## Building
 
 ### Prerequisites
