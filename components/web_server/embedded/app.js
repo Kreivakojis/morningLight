@@ -164,6 +164,11 @@ function editAlarm(id) {
     updateAlarmAnimationDropdown();
     $('#alarm-animation-preset').value = alarm ? alarm.animation_preset : -1;
 
+    // Cooldown
+    const cooldownVal = alarm ? (alarm.cooldown_min || 0) : 0;
+    $('#alarm-cooldown').value = cooldownVal;
+    $('#alarm-cooldown-val').textContent = cooldownVal > 0 ? `${cooldownVal} min` : 'Off';
+
     $('#alarm-modal').classList.add('show');
 }
 
@@ -180,6 +185,35 @@ $('#btn-add-alarm').addEventListener('click', () => editAlarm(-1));
 $('#btn-alarm-cancel').addEventListener('click', () => {
     $('#alarm-modal').classList.remove('show');
 });
+
+function timeInWindow(t, start, end) {
+    // Check if time t falls within [start, end) handling midnight wrap
+    if (end <= 1440) {
+        return t >= start && t < end;
+    }
+    return t >= start || t < (end % 1440);
+}
+
+function checkAlarmClash(savingAlarm) {
+    const startA = savingAlarm.hour * 60 + savingAlarm.minute;
+    const endA = startA + savingAlarm.duration_min + (savingAlarm.cooldown_min || 0);
+
+    const clashes = [];
+    for (const other of alarms) {
+        if (other.id === savingAlarm.id || !other.enabled) continue;
+        if ((savingAlarm.days_mask & other.days_mask) === 0) continue;
+
+        const startB = other.hour * 60 + other.minute;
+        const endB = startB + other.duration_min + (other.cooldown_min || 0);
+
+        // Check if other alarm's start falls within saving alarm's full window
+        if (timeInWindow(startB, startA, endA)) { clashes.push(other); continue; }
+        // Check if saving alarm's start falls within other alarm's full window
+        if (timeInWindow(startA, startB, endB)) { clashes.push(other); }
+    }
+
+    return clashes.length > 0 ? clashes : null;
+}
 
 $('#alarm-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -200,10 +234,22 @@ $('#alarm-form').addEventListener('submit', async (e) => {
         days_mask: daysMask,
         color_temp: parseInt($('#alarm-color-temp').value),
         brightness: parseInt($('#alarm-brightness').value),
-        animation_preset: parseInt($('#alarm-animation-preset').value)
+        animation_preset: parseInt($('#alarm-animation-preset').value),
+        cooldown_min: parseInt($('#alarm-cooldown').value)
     };
 
     if (alarm.id < 0) delete alarm.id;
+
+    // Check for time clashes with other alarms (active + cooldown windows)
+    const clashes = checkAlarmClash(alarm);
+    if (clashes) {
+        const details = clashes.map(c =>
+            `${String(c.hour).padStart(2,'0')}:${String(c.minute).padStart(2,'0')}`
+        ).join(', ');
+        alert(`This alarm overlaps with alarm(s) at ${details}. ` +
+              `Please adjust the start time or duration to avoid overlap.`);
+        return;
+    }
 
     await api.post('/api/alarms', alarm);
     $('#alarm-modal').classList.remove('show');
@@ -221,6 +267,11 @@ $('#alarm-color-temp').addEventListener('input', (e) => {
 
 $('#alarm-brightness').addEventListener('input', (e) => {
     $('#alarm-brightness-val').textContent = `${e.target.value}%`;
+});
+
+$('#alarm-cooldown').addEventListener('input', (e) => {
+    const val = parseInt(e.target.value);
+    $('#alarm-cooldown-val').textContent = val > 0 ? `${val} min` : 'Off';
 });
 
 // WiFi

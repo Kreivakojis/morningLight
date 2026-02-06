@@ -329,6 +329,7 @@ static esp_err_t api_alarms_get_handler(httpd_req_t *req)
         cJSON_AddNumberToObject(a, "color_temp", alarm->color_temp);
         cJSON_AddNumberToObject(a, "brightness", alarm->brightness);
         cJSON_AddNumberToObject(a, "animation_preset", alarm->animation_preset);
+        cJSON_AddNumberToObject(a, "cooldown_min", alarm->cooldown_min);
         cJSON_AddItemToArray(alarms, a);
     }
 
@@ -394,6 +395,12 @@ static esp_err_t api_alarms_post_handler(httpd_req_t *req)
         if (val >= -1 && val < ANIMATION_MAX_PRESETS) {
             alarm->animation_preset = val;
         }
+    }
+
+    cJSON *cooldown = cJSON_GetObjectItem(json, "cooldown_min");
+    if (cJSON_IsNumber(cooldown)) {
+        uint8_t val = (uint8_t)cooldown->valuedouble;
+        if (val <= 60) alarm->cooldown_min = val;
     }
 
     config_manager_save();

@@ -30,6 +30,7 @@ typedef struct {
     uint16_t color_temp;    // Color temperature in Kelvin
     uint8_t brightness;     // Max brightness percentage
     int8_t animation_preset; // -1 = classic, 0-4 = animation preset index
+    uint8_t cooldown_min;    // 0 = no auto-off, 1-60 = dim-to-off duration
 } alarm_config_t;
 
 /**

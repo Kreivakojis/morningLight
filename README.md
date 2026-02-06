@@ -38,6 +38,9 @@ ESP32-based sunrise alarm clock with RGB LED control and web interface.
   - Multiple brightness curves (linear, ease-in-out, logarithmic)
   - Color temperature simulation (warm to cool)
   - Per-alarm brightness and color settings
+  - **Auto turn-off (cool-down)**: configurable 1-60 minute gradual dim-to-off after sunrise completes
+  - Cool-down works with both classic and animated sunrise modes
+  - Client-side overlap detection prevents saving alarms with conflicting time windows
 
 - **Wave Animation Engine**
   - Parametric sine-wave animations for ambient lighting
@@ -207,19 +210,14 @@ Default settings can be modified in `sdkconfig.defaults` or via `idf.py menuconf
 
 - [x] Addressable LED support (WS2811, WS2812)
 - [x] Wave animation engine with spatial effects
+- [x] Auto turn-off / cool-down after sunrise
 - [ ] SK6812 RGBW support
-- [ ] Sunset simulation (gradual dimming)
 - [ ] Sound/buzzer alarm option
 - [ ] MQTT integration for smart home systems
 - [ ] Home Assistant auto-discovery
 - [ ] OTA firmware updates
 - [ ] Sleep tracking integration
 - [ ] Ambient light sensor for auto-brightness
-- [ ] Motion sensor for wake detection
-- [ ] Bluetooth control app
-- [ ] Voice assistant integration (Alexa, Google Home)
-- [ ] Calendar integration for alarm scheduling
-- [ ] Weather-based color temperature adjustment
 - [ ] Multi-room synchronization
 
 ## License

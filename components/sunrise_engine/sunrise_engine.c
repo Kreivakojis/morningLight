@@ -64,6 +64,11 @@ static struct {
     uint8_t *brightness_buffer;        // Per-LED brightness array
     uint16_t led_count;
 
+    // Cooldown fields
+    uint8_t cooldown_min;
+    uint32_t cooldown_start_ms;
+    uint32_t cooldown_duration_ms;
+
     // Tasks and timers
     TaskHandle_t task;
     TimerHandle_t schedule_timer;
@@ -152,24 +157,59 @@ static void sunrise_task(void *arg)
             if (!state.animation_mode) {
                 // Classic mode: stop at end
                 update_leds(progress);
-                set_state(SUNRISE_STATE_COMPLETE);
-                event.progress_percent = 100;
-                esp_event_post(APP_EVENTS, APP_EVENT_ALARM_COMPLETE, &event, sizeof(event), 0);
+                if (!completion_posted) {
+                    set_state(SUNRISE_STATE_COMPLETE);
+                    event.progress_percent = 100;
+                    esp_event_post(APP_EVENTS, APP_EVENT_ALARM_COMPLETE, &event, sizeof(event), 0);
+                    completion_posted = true;
+                }
                 break;
             }
 
-            // Animation mode: post completion once, keep wave running
+            // Animation mode: post completion once
             if (!completion_posted) {
                 ESP_LOGI(TAG, "Ramp complete, continuing wave animation");
                 event.progress_percent = 100;
                 esp_event_post(APP_EVENTS, APP_EVENT_ALARM_COMPLETE, &event, sizeof(event), 0);
                 completion_posted = true;
             }
+
+            // If cooldown configured, break out to start cooldown phase
+            if (state.cooldown_min > 0) {
+                break;
+            }
         }
 
         update_leds(progress);
 
         vTaskDelay(pdMS_TO_TICKS(update_interval_ms));
+    }
+
+    // Cooldown phase: gradually dim to off
+    if (state.state != SUNRISE_STATE_CANCELLED && state.cooldown_min > 0) {
+        set_state(SUNRISE_STATE_COOLDOWN);
+        state.cooldown_start_ms = xTaskGetTickCount() * portTICK_PERIOD_MS;
+        state.cooldown_duration_ms = state.cooldown_min * 60 * 1000;
+
+        ESP_LOGI(TAG, "Entering cooldown: %d min", state.cooldown_min);
+
+        while (state.state == SUNRISE_STATE_COOLDOWN) {
+            uint32_t elapsed = (xTaskGetTickCount() * portTICK_PERIOD_MS) - state.cooldown_start_ms;
+            float cooldown_progress = (float)elapsed / state.cooldown_duration_ms;
+
+            if (cooldown_progress >= 1.0f) {
+                led_controller_off();
+                set_state(SUNRISE_STATE_IDLE);
+                ESP_LOGI(TAG, "Cooldown complete, LEDs off");
+                break;
+            }
+
+            // Reverse ramp: brightness goes max -> 0
+            float reverse_progress = 1.0f - cooldown_progress;
+            update_leds(reverse_progress);
+
+            vTaskDelay(pdMS_TO_TICKS(update_interval_ms));
+        }
     }
 
     if (state.state == SUNRISE_STATE_CANCELLED) {
@@ -216,6 +256,12 @@ static void check_schedule(void)
 
     // Check if it's time to start (within 1 minute window)
     if (state.minutes_until_alarm <= 0 && state.state != SUNRISE_STATE_ACTIVE) {
+        // Cancel any running cooldown before starting new alarm
+        if (state.state == SUNRISE_STATE_COOLDOWN) {
+            set_state(SUNRISE_STATE_CANCELLED);
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+
         // Stop any running animation
         if (animation_engine_is_running()) {
             ESP_LOGI(TAG, "Stopping animation for scheduled sunrise");
@@ -242,6 +288,7 @@ static void check_schedule(void)
         state.duration_ms = next->duration_min * 60 * 1000;
         state.color_temp = next->color_temp;
         state.max_brightness = next->brightness;
+        state.cooldown_min = next->cooldown_min;
 
         // Limit to global max brightness
         if (state.max_brightness > config->brightness_max) {
@@ -322,6 +369,7 @@ const char *sunrise_engine_get_state_str(void)
         case SUNRISE_STATE_SCHEDULED: return "scheduled";
         case SUNRISE_STATE_ACTIVE:    return "active";
         case SUNRISE_STATE_COMPLETE:  return "complete";
+        case SUNRISE_STATE_COOLDOWN:  return "cooldown";
         case SUNRISE_STATE_CANCELLED: return "cancelled";
         default:                      return "unknown";
     }
@@ -329,10 +377,13 @@ const char *sunrise_engine_get_state_str(void)
 
 int sunrise_engine_get_progress(void)
 {
-    if (state.state != SUNRISE_STATE_ACTIVE) {
-        return -1;
+    if (state.state == SUNRISE_STATE_ACTIVE) {
+        return (int)(state.current_progress * 100);
     }
-    return (int)(state.current_progress * 100);
+    if (state.state == SUNRISE_STATE_COOLDOWN) {
+        return (int)(state.current_progress * 100);
+    }
+    return -1;
 }
 
 int sunrise_engine_get_active_alarm(void)
@@ -375,6 +426,7 @@ esp_err_t sunrise_engine_start_manual(uint8_t duration_min, uint16_t color_temp,
     state.duration_ms = duration_min * 60 * 1000;
     state.color_temp = color_temp;
     state.max_brightness = brightness;
+    state.cooldown_min = 0;  // No auto-off for manual tests
 
     // Limit to global max brightness
     if (state.max_brightness > config->brightness_max) {
@@ -390,7 +442,7 @@ esp_err_t sunrise_engine_start_manual(uint8_t duration_min, uint16_t color_temp,
 
 void sunrise_engine_cancel(void)
 {
-    if (state.state == SUNRISE_STATE_ACTIVE) {
+    if (state.state == SUNRISE_STATE_ACTIVE || state.state == SUNRISE_STATE_COOLDOWN) {
         ESP_LOGI(TAG, "Cancelling sunrise");
         set_state(SUNRISE_STATE_CANCELLED);
     }

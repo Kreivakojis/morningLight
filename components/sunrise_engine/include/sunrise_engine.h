@@ -17,6 +17,7 @@ typedef enum {
     SUNRISE_STATE_SCHEDULED,    // Waiting for next alarm
     SUNRISE_STATE_ACTIVE,       // Sunrise in progress
     SUNRISE_STATE_COMPLETE,     // Sunrise finished, holding brightness
+    SUNRISE_STATE_COOLDOWN,     // Dimming to off after completion
     SUNRISE_STATE_CANCELLED,    // Cancelled by user
 } sunrise_state_t;
 
