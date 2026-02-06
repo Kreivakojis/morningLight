@@ -78,9 +78,11 @@ int sunrise_engine_get_active_alarm(void);
  * @param duration_min Duration in minutes
  * @param color_temp Color temperature in Kelvin
  * @param brightness Max brightness percentage
+ * @param animation_preset Animation preset index (-1 for classic, 0-4 for preset)
  * @return ESP_OK on success
  */
-esp_err_t sunrise_engine_start_manual(uint8_t duration_min, uint16_t color_temp, uint8_t brightness);
+esp_err_t sunrise_engine_start_manual(uint8_t duration_min, uint16_t color_temp,
+                                       uint8_t brightness, int8_t animation_preset);
 
 /**
  * @brief Cancel active sunrise

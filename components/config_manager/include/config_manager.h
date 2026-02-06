@@ -29,6 +29,7 @@ typedef struct {
     uint8_t days_mask;      // Bit mask: bit 0 = Sunday, bit 6 = Saturday
     uint16_t color_temp;    // Color temperature in Kelvin
     uint8_t brightness;     // Max brightness percentage
+    int8_t animation_preset; // -1 = classic, 0-4 = animation preset index
 } alarm_config_t;
 
 /**

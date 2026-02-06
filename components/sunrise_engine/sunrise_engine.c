@@ -5,8 +5,10 @@
 #include "freertos/timers.h"
 #include "esp_log.h"
 #include "esp_event.h"
+#include "esp_heap_caps.h"
 #include "sunrise_engine.h"
 #include "config_manager.h"
+#include "animation_preset.h"
 #include "time_manager.h"
 #include "led_controller.h"
 
@@ -16,6 +18,12 @@ extern void animation_engine_stop(void);
 
 // External curve functions
 extern float sunrise_curve_apply(sunrise_curve_t curve, float t);
+
+// External wave generator function for animated sunrise
+extern void wave_generator_compute_with_base(uint8_t *, uint16_t, const animation_preset_t *, float, int16_t);
+
+// External color utility function
+extern void color_utils_kelvin_to_rgb(uint16_t kelvin, uint8_t *r, uint8_t *g, uint8_t *b);
 
 static const char *TAG = "sunrise";
 
@@ -49,6 +57,13 @@ static struct {
     uint8_t max_brightness;
     float current_progress;
 
+    // Animation mode fields
+    bool animation_mode;
+    int8_t animation_preset_id;
+    animation_preset_t preset_copy;    // Local copy to avoid race conditions
+    uint8_t *brightness_buffer;        // Per-LED brightness array
+    uint16_t led_count;
+
     // Tasks and timers
     TaskHandle_t task;
     TimerHandle_t schedule_timer;
@@ -67,24 +82,51 @@ static void update_leds(float progress)
     // Apply curve
     float curved_progress = sunrise_curve_apply(state.curve, progress);
 
-    // Calculate brightness
-    uint8_t brightness = (uint8_t)(curved_progress * state.max_brightness);
+    // Calculate ramped brightness
+    uint8_t ramp_brightness = (uint8_t)(curved_progress * state.max_brightness);
 
-    ESP_LOGD(TAG, "Sunrise: %.0f%% -> %d%%", progress * 100.0f, brightness);
+    ESP_LOGD(TAG, "Sunrise: %.0f%% -> %d%%", progress * 100.0f, ramp_brightness);
 
-    // Set color temperature and brightness
-    led_controller_set_color_temp(state.color_temp, brightness);
+    if (!state.animation_mode) {
+        // Classic mode: uniform brightness
+        led_controller_set_color_temp(state.color_temp, ramp_brightness);
+    } else {
+        // Animated mode: wave with ramped base brightness
+        // Note: base color is set once in sunrise_task() before the loop,
+        // NOT here. Calling set_rgb() every frame triggers a uniform strip
+        // refresh before set_pixel_brightnesses() applies the wave, causing flicker.
+        float elapsed_sec = ((xTaskGetTickCount() * portTICK_PERIOD_MS) - state.start_time_ms) / 1000.0f;
+
+        // Compute wave with ramped base
+        wave_generator_compute_with_base(
+            state.brightness_buffer,
+            state.led_count,
+            &state.preset_copy,
+            elapsed_sec,
+            ramp_brightness  // Override base with ramping value
+        );
+
+        led_controller_set_pixel_brightnesses(state.brightness_buffer, state.led_count);
+    }
 
     state.current_progress = progress;
 }
 
 static void sunrise_task(void *arg)
 {
-    ESP_LOGI(TAG, "Sunrise started: %lums, %dK, %d%%",
-             state.duration_ms, state.color_temp, state.max_brightness);
+    ESP_LOGI(TAG, "Sunrise started: %lums, %dK, %d%%, animation=%d",
+             state.duration_ms, state.color_temp, state.max_brightness, state.animation_mode);
 
     state.start_time_ms = xTaskGetTickCount() * portTICK_PERIOD_MS;
     set_state(SUNRISE_STATE_ACTIVE);
+
+    // Set base color once before the loop (not per-frame) to avoid
+    // double strip refresh causing flicker
+    if (state.animation_mode) {
+        uint8_t r, g, b;
+        color_utils_kelvin_to_rgb(state.preset_copy.color_temp, &r, &g, &b);
+        led_controller_set_rgb(r, g, b);
+    }
 
     // Post alarm triggered event
     app_event_alarm_t event = {
@@ -93,23 +135,41 @@ static void sunrise_task(void *arg)
     };
     esp_event_post(APP_EVENTS, APP_EVENT_ALARM_TRIGGERED, &event, sizeof(event), 0);
 
+    // Use faster update interval for animation mode (smooth wave), slower for classic
+    uint32_t update_interval_ms = state.animation_mode
+        ? CONFIG_ML_ANIM_UPDATE_INTERVAL_MS
+        : CONFIG_ML_SUNRISE_UPDATE_INTERVAL_MS;
+
+    bool completion_posted = false;
+
     while (state.state == SUNRISE_STATE_ACTIVE) {
         uint32_t elapsed = (xTaskGetTickCount() * portTICK_PERIOD_MS) - state.start_time_ms;
         float progress = (float)elapsed / state.duration_ms;
 
         if (progress >= 1.0f) {
             progress = 1.0f;
-            update_leds(progress);
-            set_state(SUNRISE_STATE_COMPLETE);
 
-            event.progress_percent = 100;
-            esp_event_post(APP_EVENTS, APP_EVENT_ALARM_COMPLETE, &event, sizeof(event), 0);
-            break;
+            if (!state.animation_mode) {
+                // Classic mode: stop at end
+                update_leds(progress);
+                set_state(SUNRISE_STATE_COMPLETE);
+                event.progress_percent = 100;
+                esp_event_post(APP_EVENTS, APP_EVENT_ALARM_COMPLETE, &event, sizeof(event), 0);
+                break;
+            }
+
+            // Animation mode: post completion once, keep wave running
+            if (!completion_posted) {
+                ESP_LOGI(TAG, "Ramp complete, continuing wave animation");
+                event.progress_percent = 100;
+                esp_event_post(APP_EVENTS, APP_EVENT_ALARM_COMPLETE, &event, sizeof(event), 0);
+                completion_posted = true;
+            }
         }
 
         update_leds(progress);
 
-        vTaskDelay(pdMS_TO_TICKS(CONFIG_ML_SUNRISE_UPDATE_INTERVAL_MS));
+        vTaskDelay(pdMS_TO_TICKS(update_interval_ms));
     }
 
     if (state.state == SUNRISE_STATE_CANCELLED) {
@@ -162,15 +222,28 @@ static void check_schedule(void)
             animation_engine_stop();
         }
 
-        ESP_LOGI(TAG, "Starting sunrise #%d: %dmin, %dK, %d%%",
-                 alarm_id, next->duration_min, next->color_temp, next->brightness);
+        device_config_t *config = config_manager_get();
+
+        // Setup animation mode if preset is valid
+        if (next->animation_preset >= 0 && next->animation_preset < ANIMATION_MAX_PRESETS) {
+            state.animation_mode = true;
+            state.animation_preset_id = next->animation_preset;
+            memcpy(&state.preset_copy, &config->animation_presets[next->animation_preset],
+                   sizeof(animation_preset_t));
+            state.led_count = led_controller_get_led_count();
+            ESP_LOGI(TAG, "Starting animated sunrise #%d: preset=%d, %dmin, %d%%",
+                     alarm_id, next->animation_preset, next->duration_min, next->brightness);
+        } else {
+            state.animation_mode = false;
+            ESP_LOGI(TAG, "Starting sunrise #%d: %dmin, %dK, %d%%",
+                     alarm_id, next->duration_min, next->color_temp, next->brightness);
+        }
 
         state.duration_ms = next->duration_min * 60 * 1000;
         state.color_temp = next->color_temp;
         state.max_brightness = next->brightness;
 
         // Limit to global max brightness
-        device_config_t *config = config_manager_get();
         if (state.max_brightness > config->brightness_max) {
             state.max_brightness = config->brightness_max;
         }
@@ -203,12 +276,23 @@ esp_err_t sunrise_engine_init(void)
     state.curve = SUNRISE_CURVE_LOGARITHMIC;  // Most natural
     state.scheduled_alarm_id = -1;
     state.minutes_until_alarm = -1;
+    state.animation_mode = false;
+    state.animation_preset_id = -1;
+
+    // Allocate brightness buffer for animated sunrise (max 300 LEDs)
+    state.brightness_buffer = heap_caps_malloc(300, MALLOC_CAP_8BIT);
+    if (state.brightness_buffer == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate brightness buffer");
+        return ESP_ERR_NO_MEM;
+    }
 
     // Create schedule check timer (every 30 seconds)
     state.schedule_timer = xTimerCreate("sunrise_sched", pdMS_TO_TICKS(30000),
                                         pdTRUE, NULL, schedule_timer_callback);
     if (state.schedule_timer == NULL) {
         ESP_LOGE(TAG, "Failed to create timer");
+        free(state.brightness_buffer);
+        state.brightness_buffer = NULL;
         return ESP_ERR_NO_MEM;
     }
 
@@ -256,7 +340,8 @@ int sunrise_engine_get_active_alarm(void)
     return state.scheduled_alarm_id;
 }
 
-esp_err_t sunrise_engine_start_manual(uint8_t duration_min, uint16_t color_temp, uint8_t brightness)
+esp_err_t sunrise_engine_start_manual(uint8_t duration_min, uint16_t color_temp,
+                                       uint8_t brightness, int8_t animation_preset)
 {
     if (state.state == SUNRISE_STATE_ACTIVE) {
         ESP_LOGW(TAG, "Sunrise already active");
@@ -269,8 +354,22 @@ esp_err_t sunrise_engine_start_manual(uint8_t duration_min, uint16_t color_temp,
         animation_engine_stop();
     }
 
-    ESP_LOGI(TAG, "Starting manual sunrise: %d min, %dK, %d%%",
-             duration_min, color_temp, brightness);
+    device_config_t *config = config_manager_get();
+
+    // Setup animation mode if preset is valid
+    if (animation_preset >= 0 && animation_preset < ANIMATION_MAX_PRESETS) {
+        state.animation_mode = true;
+        state.animation_preset_id = animation_preset;
+        memcpy(&state.preset_copy, &config->animation_presets[animation_preset],
+               sizeof(animation_preset_t));
+        state.led_count = led_controller_get_led_count();
+        ESP_LOGI(TAG, "Starting manual animated sunrise: preset=%d, %d min, %d%%",
+                 animation_preset, duration_min, brightness);
+    } else {
+        state.animation_mode = false;
+        ESP_LOGI(TAG, "Starting manual sunrise: %d min, %dK, %d%%",
+                 duration_min, color_temp, brightness);
+    }
 
     state.scheduled_alarm_id = -1;
     state.duration_ms = duration_min * 60 * 1000;
@@ -278,7 +377,6 @@ esp_err_t sunrise_engine_start_manual(uint8_t duration_min, uint16_t color_temp,
     state.max_brightness = brightness;
 
     // Limit to global max brightness
-    device_config_t *config = config_manager_get();
     if (state.max_brightness > config->brightness_max) {
         state.max_brightness = config->brightness_max;
     }
@@ -329,6 +427,12 @@ void sunrise_engine_deinit(void)
     // Wait for task to exit
     if (state.task) {
         vTaskDelay(pdMS_TO_TICKS(200));
+    }
+
+    // Free brightness buffer
+    if (state.brightness_buffer) {
+        free(state.brightness_buffer);
+        state.brightness_buffer = NULL;
     }
 
     state.initialized = false;

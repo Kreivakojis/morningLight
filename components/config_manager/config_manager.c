@@ -52,6 +52,11 @@ static void set_defaults(void)
     config.alarms[0].brightness = 100;
     config.alarms[0].enabled = false;
 
+    // Default animation_preset to -1 (classic) for all alarms
+    for (int i = 0; i < 8; i++) {
+        config.alarms[i].animation_preset = -1;
+    }
+
     config.setup_complete = false;
 
     // Default animation presets

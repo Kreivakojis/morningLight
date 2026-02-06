@@ -328,6 +328,7 @@ static esp_err_t api_alarms_get_handler(httpd_req_t *req)
         cJSON_AddNumberToObject(a, "days_mask", alarm->days_mask);
         cJSON_AddNumberToObject(a, "color_temp", alarm->color_temp);
         cJSON_AddNumberToObject(a, "brightness", alarm->brightness);
+        cJSON_AddNumberToObject(a, "animation_preset", alarm->animation_preset);
         cJSON_AddItemToArray(alarms, a);
     }
 
@@ -386,6 +387,14 @@ static esp_err_t api_alarms_post_handler(httpd_req_t *req)
 
     cJSON *brightness = cJSON_GetObjectItem(json, "brightness");
     if (cJSON_IsNumber(brightness)) alarm->brightness = (uint8_t)brightness->valuedouble;
+
+    cJSON *anim_preset = cJSON_GetObjectItem(json, "animation_preset");
+    if (cJSON_IsNumber(anim_preset)) {
+        int8_t val = (int8_t)anim_preset->valuedouble;
+        if (val >= -1 && val < ANIMATION_MAX_PRESETS) {
+            alarm->animation_preset = val;
+        }
+    }
 
     config_manager_save();
     sunrise_engine_update_schedule();

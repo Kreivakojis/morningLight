@@ -1,4 +1,5 @@
 #include <string.h>
+#include <math.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "led_strip.h"
@@ -13,9 +14,6 @@ static const char *TAG = "led_ws2811";
 
 // Gamma correction value (same as PWM driver)
 #define GAMMA_VALUE         2.2f
-
-// External color utilities
-extern uint32_t color_utils_gamma_correct(uint8_t value, float gamma);
 
 // State
 static struct {
@@ -33,23 +31,15 @@ static void update_pixels(void)
         return;
     }
 
-    // Apply brightness scaling
     float brightness_scale = ws2811_state.brightness / 100.0f;
 
-    // Scale RGB by brightness
-    uint8_t scaled_r = (uint8_t)(ws2811_state.r * brightness_scale);
-    uint8_t scaled_g = (uint8_t)(ws2811_state.g * brightness_scale);
-    uint8_t scaled_b = (uint8_t)(ws2811_state.b * brightness_scale);
-
-    // Apply gamma correction (scale from 12-bit to 8-bit)
-    uint32_t gamma_r = color_utils_gamma_correct(scaled_r, GAMMA_VALUE);
-    uint32_t gamma_g = color_utils_gamma_correct(scaled_g, GAMMA_VALUE);
-    uint32_t gamma_b = color_utils_gamma_correct(scaled_b, GAMMA_VALUE);
-
-    // Convert 12-bit PWM value to 8-bit for LED strip
-    uint8_t out_r = (gamma_r * 255) / 4095;
-    uint8_t out_g = (gamma_g * 255) / 4095;
-    uint8_t out_b = (gamma_b * 255) / 4095;
+    // Gamma-correct the color at full intensity, then scale by brightness.
+    // This preserves low-brightness resolution. The old approach of scaling
+    // first then gamma-correcting crushed small values to zero through the
+    // 12-bit PWM intermediary (e.g. 8% brightness → output 0).
+    uint8_t out_r = (uint8_t)(powf(ws2811_state.r / 255.0f, GAMMA_VALUE) * brightness_scale * 255.0f);
+    uint8_t out_g = (uint8_t)(powf(ws2811_state.g / 255.0f, GAMMA_VALUE) * brightness_scale * 255.0f);
+    uint8_t out_b = (uint8_t)(powf(ws2811_state.b / 255.0f, GAMMA_VALUE) * brightness_scale * 255.0f);
 
     ESP_LOGD(TAG, "LED update: RGB(%d,%d,%d) bright=%d%% -> out RGB(%d,%d,%d)",
              ws2811_state.r, ws2811_state.g, ws2811_state.b,
@@ -168,25 +158,19 @@ static void ws2811_set_pixel_brightnesses(const uint8_t *brightness_array, uint1
         count = ws2811_state.led_count;
     }
 
-    // Apply per-LED brightness to the base RGB color
+    // Gamma-correct base color once at full intensity, then scale per-LED
+    float gamma_r = powf(ws2811_state.r / 255.0f, GAMMA_VALUE) * 255.0f;
+    float gamma_g = powf(ws2811_state.g / 255.0f, GAMMA_VALUE) * 255.0f;
+    float gamma_b = powf(ws2811_state.b / 255.0f, GAMMA_VALUE) * 255.0f;
+
     for (uint16_t i = 0; i < count; i++) {
         uint8_t brightness = brightness_array[i];
         if (brightness > 100) brightness = 100;
 
         float scale = brightness / 100.0f;
-        uint8_t scaled_r = (uint8_t)(ws2811_state.r * scale);
-        uint8_t scaled_g = (uint8_t)(ws2811_state.g * scale);
-        uint8_t scaled_b = (uint8_t)(ws2811_state.b * scale);
-
-        // Apply gamma correction
-        uint32_t gamma_r = color_utils_gamma_correct(scaled_r, GAMMA_VALUE);
-        uint32_t gamma_g = color_utils_gamma_correct(scaled_g, GAMMA_VALUE);
-        uint32_t gamma_b = color_utils_gamma_correct(scaled_b, GAMMA_VALUE);
-
-        // Convert 12-bit to 8-bit
-        uint8_t out_r = (gamma_r * 255) / 4095;
-        uint8_t out_g = (gamma_g * 255) / 4095;
-        uint8_t out_b = (gamma_b * 255) / 4095;
+        uint8_t out_r = (uint8_t)(gamma_r * scale);
+        uint8_t out_g = (uint8_t)(gamma_g * scale);
+        uint8_t out_b = (uint8_t)(gamma_b * scale);
 
         // WS2811 color order correction: swap G and B
         led_strip_set_pixel(ws2811_state.strip, i, out_r, out_b, out_g);

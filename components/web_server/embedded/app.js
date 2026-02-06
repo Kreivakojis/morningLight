@@ -160,7 +160,19 @@ function editAlarm(id) {
         cb.checked = (daysMask & (1 << day)) !== 0;
     });
 
+    // Animation preset dropdown
+    updateAlarmAnimationDropdown();
+    $('#alarm-animation-preset').value = alarm ? alarm.animation_preset : -1;
+
     $('#alarm-modal').classList.add('show');
+}
+
+function updateAlarmAnimationDropdown() {
+    const select = $('#alarm-animation-preset');
+    const val = select.value;
+    select.innerHTML = '<option value="-1">Classic (uniform brightness)</option>' +
+        animationPresets.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    select.value = val;
 }
 
 $('#btn-add-alarm').addEventListener('click', () => editAlarm(-1));
@@ -187,7 +199,8 @@ $('#alarm-form').addEventListener('submit', async (e) => {
         duration_min: parseInt($('#alarm-duration').value),
         days_mask: daysMask,
         color_temp: parseInt($('#alarm-color-temp').value),
-        brightness: parseInt($('#alarm-brightness').value)
+        brightness: parseInt($('#alarm-brightness').value),
+        animation_preset: parseInt($('#alarm-animation-preset').value)
     };
 
     if (alarm.id < 0) delete alarm.id;
