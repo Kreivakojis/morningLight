@@ -382,8 +382,8 @@ $('#btn-save-settings').addEventListener('click', async () => {
 
     if (result.restart_required) {
         if (confirm('LED settings changed. Device needs to restart. Restart now?')) {
-            // Note: Would need a restart endpoint, for now just inform user
-            alert('Please power cycle the device to apply LED changes.');
+            await api.post('/api/reboot', {});
+            alert('Device is rebooting...');
         }
     } else {
         alert('Settings saved');
@@ -688,6 +688,60 @@ $('#darkmode-form').addEventListener('submit', async (e) => {
     await api.post('/api/darkmode', schedule);
     $('#darkmode-modal').classList.remove('show');
     loadDarkMode();
+});
+
+// Config export
+$('#btn-export-config').addEventListener('click', () => {
+    window.location.href = '/api/config/export';
+});
+
+// Config import
+$('#file-import-config').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!confirm('Import will overwrite all settings. Continue?')) {
+        e.target.value = '';
+        return;
+    }
+    try {
+        const text = await file.text();
+        const resp = await fetch('/api/config/import', { method: 'POST', body: text });
+        const result = await resp.json();
+        if (result.success) {
+            if (result.restart_required) {
+                if (confirm('Config imported. Restart now to apply LED changes?')) {
+                    await api.post('/api/reboot', {});
+                    alert('Device is rebooting...');
+                }
+            } else {
+                alert('Config imported successfully');
+                loadConfig(); loadAlarms(); loadDarkMode(); loadAnimationPresets();
+            }
+        }
+    } catch (err) { alert('Import failed: ' + err.message); }
+    e.target.value = '';
+});
+
+// Reboot
+$('#btn-reboot').addEventListener('click', async () => {
+    if (!confirm('Reboot the device?')) return;
+    await api.post('/api/reboot', {});
+    alert('Device is rebooting...');
+});
+
+// Factory Reset
+$('#btn-factory-reset').addEventListener('click', async () => {
+    if (!confirm('Reset all settings to factory defaults? WiFi credentials will be kept.')) return;
+    await api.post('/api/factory-reset', {});
+    alert('Device is resetting and rebooting...');
+});
+
+// Hidden WiFi — Manual Entry
+$('#btn-manual-wifi').addEventListener('click', () => {
+    $('#wifi-ssid').value = '';
+    $('#wifi-password').value = '';
+    $('#wifi-password').style.display = 'block';
+    $('#wifi-connect-form').style.display = 'block';
 });
 
 // Init

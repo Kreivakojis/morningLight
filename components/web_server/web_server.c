@@ -8,6 +8,7 @@
 #include "esp_netif.h"
 #include "cJSON.h"
 
+#include "esp_system.h"
 #include "web_server.h"
 #include "wifi_manager.h"
 #include "config_manager.h"
@@ -790,6 +791,372 @@ static esp_err_t options_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+// GET /api/config/export
+static const char *config_export_header =
+    "// MorningLight Configuration Export\n"
+    "//\n"
+    "// Fields:\n"
+    "//   timezone         - POSIX timezone string (e.g. \"UTC0\", \"UTC-2\")\n"
+    "//   brightness_max   - Global brightness cap, 10-100 (%)\n"
+    "//   led_type         - 0 = PWM RGB, 1 = WS2811 addressable\n"
+    "//   led_count        - Number of WS2811 LEDs, 1-300\n"
+    "//   pwm_frequency    - PWM frequency in Hz, 100-40000\n"
+    "//\n"
+    "//   alarms (array of 8 slots):\n"
+    "//     enabled          - true/false\n"
+    "//     hour             - 0-23\n"
+    "//     minute           - 0-59\n"
+    "//     duration_min     - Sunrise duration, 5-120 minutes\n"
+    "//     days_mask        - Bitmask: bit0=Sun, bit1=Mon, ... bit6=Sat (e.g. 62 = Mon-Fri)\n"
+    "//     color_temp       - Color temperature, 2000-6500 Kelvin\n"
+    "//     brightness       - Target brightness, 0-100 (%)\n"
+    "//     animation_preset - -1 = classic, 0-4 = animation preset index\n"
+    "//     cooldown_min     - Auto-off delay, 0 = disabled, 1-60 minutes\n"
+    "//\n"
+    "//   animation_presets (array of 5 slots):\n"
+    "//     name             - Display name, max 11 chars\n"
+    "//     wavelength       - 2.0-300.0 LEDs between peaks\n"
+    "//     amplitude        - 0-100 (%) contrast\n"
+    "//     speed            - 0.0-5.0 cycles/sec\n"
+    "//     base_brightness  - 0-100 (%) midpoint\n"
+    "//     variation        - 0-100 (%) organic noise\n"
+    "//     color_temp       - 2000-6500 Kelvin\n"
+    "//\n"
+    "//   dark_mode (array of 3 slots):\n"
+    "//     enabled          - true/false\n"
+    "//     start_hour       - 0-23\n"
+    "//     start_minute     - 0-59\n"
+    "//     end_hour         - 0-23\n"
+    "//     end_minute       - 0-59\n"
+    "//     days_mask        - Bitmask (same as alarms)\n"
+    "//     allow_override   - true = lights can still operate during this window\n"
+    "//\n"
+    "// WiFi credentials are excluded for security.\n"
+    "// To import: upload this file via the web UI.\n"
+    "//\n";
+
+static esp_err_t api_config_export_handler(httpd_req_t *req)
+{
+    device_config_t *config = config_manager_get();
+    cJSON *json = cJSON_CreateObject();
+
+    // General settings
+    cJSON_AddStringToObject(json, "timezone", config->timezone);
+    cJSON_AddNumberToObject(json, "brightness_max", config->brightness_max);
+    cJSON_AddNumberToObject(json, "led_type", config->led_type);
+    cJSON_AddNumberToObject(json, "led_count", config->led_count);
+    cJSON_AddNumberToObject(json, "pwm_frequency", config->pwm_frequency);
+
+    // Alarms (all 8 slots)
+    cJSON *alarms = cJSON_AddArrayToObject(json, "alarms");
+    for (int i = 0; i < 8; i++) {
+        alarm_config_t *a = &config->alarms[i];
+        cJSON *item = cJSON_CreateObject();
+        cJSON_AddBoolToObject(item, "enabled", a->enabled);
+        cJSON_AddNumberToObject(item, "hour", a->hour);
+        cJSON_AddNumberToObject(item, "minute", a->minute);
+        cJSON_AddNumberToObject(item, "duration_min", a->duration_min);
+        cJSON_AddNumberToObject(item, "days_mask", a->days_mask);
+        cJSON_AddNumberToObject(item, "color_temp", a->color_temp);
+        cJSON_AddNumberToObject(item, "brightness", a->brightness);
+        cJSON_AddNumberToObject(item, "animation_preset", a->animation_preset);
+        cJSON_AddNumberToObject(item, "cooldown_min", a->cooldown_min);
+        cJSON_AddItemToArray(alarms, item);
+    }
+
+    // Animation presets (all 5 slots)
+    cJSON *presets = cJSON_AddArrayToObject(json, "animation_presets");
+    for (int i = 0; i < ANIMATION_MAX_PRESETS; i++) {
+        animation_preset_t *p = &config->animation_presets[i];
+        cJSON *item = cJSON_CreateObject();
+        cJSON_AddStringToObject(item, "name", p->name);
+        cJSON_AddNumberToObject(item, "wavelength", p->wavelength);
+        cJSON_AddNumberToObject(item, "amplitude", p->amplitude);
+        cJSON_AddNumberToObject(item, "speed", p->speed);
+        cJSON_AddNumberToObject(item, "base_brightness", p->base_brightness);
+        cJSON_AddNumberToObject(item, "variation", p->variation);
+        cJSON_AddNumberToObject(item, "color_temp", p->color_temp);
+        cJSON_AddItemToArray(presets, item);
+    }
+
+    // Dark mode (all 3 slots)
+    cJSON *dark = cJSON_AddArrayToObject(json, "dark_mode");
+    for (int i = 0; i < DARK_MODE_MAX_SCHEDULES; i++) {
+        dark_mode_schedule_t *s = &config->dark_schedules[i];
+        cJSON *item = cJSON_CreateObject();
+        cJSON_AddBoolToObject(item, "enabled", s->enabled);
+        cJSON_AddNumberToObject(item, "start_hour", s->start_hour);
+        cJSON_AddNumberToObject(item, "start_minute", s->start_minute);
+        cJSON_AddNumberToObject(item, "end_hour", s->end_hour);
+        cJSON_AddNumberToObject(item, "end_minute", s->end_minute);
+        cJSON_AddNumberToObject(item, "days_mask", s->days_mask);
+        cJSON_AddBoolToObject(item, "allow_override", s->allow_override);
+        cJSON_AddItemToArray(dark, item);
+    }
+
+    char *printed = cJSON_Print(json);
+    cJSON_Delete(json);
+
+    httpd_resp_set_type(req, "application/octet-stream");
+    httpd_resp_set_hdr(req, "Content-Disposition", "attachment; filename=\"morninglight-config.json\"");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    httpd_resp_sendstr_chunk(req, config_export_header);
+    httpd_resp_sendstr_chunk(req, printed);
+    httpd_resp_sendstr_chunk(req, NULL);
+
+    free(printed);
+    return ESP_OK;
+}
+
+// POST /api/config/import
+static esp_err_t api_config_import_handler(httpd_req_t *req)
+{
+    int content_len = req->content_len;
+    if (content_len <= 0 || content_len > 8192) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Body too large or empty");
+        return ESP_FAIL;
+    }
+
+    char *buf = malloc(content_len + 1);
+    if (buf == NULL) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_FAIL;
+    }
+
+    int received = httpd_req_recv(req, buf, content_len);
+    if (received != content_len) {
+        free(buf);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Incomplete body");
+        return ESP_FAIL;
+    }
+    buf[content_len] = '\0';
+
+    // Skip comment header — find first '{'
+    char *json_start = strchr(buf, '{');
+    if (json_start == NULL) {
+        free(buf);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "No JSON object found");
+        return ESP_FAIL;
+    }
+
+    cJSON *json = cJSON_Parse(json_start);
+    free(buf);
+    if (json == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    device_config_t *config = config_manager_get();
+    bool restart_required = false;
+
+    // General settings
+    cJSON *tz = cJSON_GetObjectItem(json, "timezone");
+    if (cJSON_IsString(tz)) {
+        strncpy(config->timezone, tz->valuestring, sizeof(config->timezone) - 1);
+        config->timezone[sizeof(config->timezone) - 1] = '\0';
+        time_manager_set_timezone(config->timezone);
+    }
+
+    cJSON *brightness = cJSON_GetObjectItem(json, "brightness_max");
+    if (cJSON_IsNumber(brightness)) {
+        config->brightness_max = (uint8_t)brightness->valuedouble;
+    }
+
+    cJSON *freq = cJSON_GetObjectItem(json, "pwm_frequency");
+    if (cJSON_IsNumber(freq)) {
+        uint32_t new_freq = (uint32_t)freq->valuedouble;
+        if (new_freq >= 100 && new_freq <= 40000) {
+            config->pwm_frequency = new_freq;
+            led_controller_set_frequency(new_freq);
+        }
+    }
+
+    cJSON *led_type = cJSON_GetObjectItem(json, "led_type");
+    if (cJSON_IsNumber(led_type)) {
+        uint8_t new_type = (uint8_t)led_type->valuedouble;
+        if (new_type <= 1 && new_type != config->led_type) {
+            config->led_type = new_type;
+            restart_required = true;
+        }
+    }
+
+    cJSON *led_count = cJSON_GetObjectItem(json, "led_count");
+    if (cJSON_IsNumber(led_count)) {
+        uint16_t new_count = (uint16_t)led_count->valuedouble;
+        if (new_count >= 1 && new_count <= 300) {
+            if (new_count != config->led_count && config->led_type == CONFIG_LED_TYPE_WS2811) {
+                restart_required = true;
+            }
+            config->led_count = new_count;
+        }
+    }
+
+    // Alarms — if present, replace all 8 slots
+    cJSON *alarms_arr = cJSON_GetObjectItem(json, "alarms");
+    if (cJSON_IsArray(alarms_arr)) {
+        memset(config->alarms, 0, sizeof(config->alarms));
+        int count = cJSON_GetArraySize(alarms_arr);
+        if (count > 8) count = 8;
+        for (int i = 0; i < count; i++) {
+            cJSON *item = cJSON_GetArrayItem(alarms_arr, i);
+            alarm_config_t *a = &config->alarms[i];
+
+            cJSON *v;
+            v = cJSON_GetObjectItem(item, "enabled");
+            if (cJSON_IsBool(v)) a->enabled = cJSON_IsTrue(v);
+
+            v = cJSON_GetObjectItem(item, "hour");
+            if (cJSON_IsNumber(v)) { uint8_t val = (uint8_t)v->valuedouble; if (val <= 23) a->hour = val; }
+
+            v = cJSON_GetObjectItem(item, "minute");
+            if (cJSON_IsNumber(v)) { uint8_t val = (uint8_t)v->valuedouble; if (val <= 59) a->minute = val; }
+
+            v = cJSON_GetObjectItem(item, "duration_min");
+            if (cJSON_IsNumber(v)) { uint8_t val = (uint8_t)v->valuedouble; if (val >= 5 && val <= 120) a->duration_min = val; }
+
+            v = cJSON_GetObjectItem(item, "days_mask");
+            if (cJSON_IsNumber(v)) a->days_mask = (uint8_t)v->valuedouble;
+
+            v = cJSON_GetObjectItem(item, "color_temp");
+            if (cJSON_IsNumber(v)) { uint16_t val = (uint16_t)v->valuedouble; if (val >= 2000 && val <= 6500) a->color_temp = val; }
+
+            v = cJSON_GetObjectItem(item, "brightness");
+            if (cJSON_IsNumber(v)) { uint8_t val = (uint8_t)v->valuedouble; if (val <= 100) a->brightness = val; }
+
+            v = cJSON_GetObjectItem(item, "animation_preset");
+            if (cJSON_IsNumber(v)) { int8_t val = (int8_t)v->valuedouble; if (val >= -1 && val < ANIMATION_MAX_PRESETS) a->animation_preset = val; }
+
+            v = cJSON_GetObjectItem(item, "cooldown_min");
+            if (cJSON_IsNumber(v)) { uint8_t val = (uint8_t)v->valuedouble; if (val <= 60) a->cooldown_min = val; }
+        }
+    }
+
+    // Animation presets — if present, replace all 5 slots
+    cJSON *presets_arr = cJSON_GetObjectItem(json, "animation_presets");
+    if (cJSON_IsArray(presets_arr)) {
+        int count = cJSON_GetArraySize(presets_arr);
+        if (count > ANIMATION_MAX_PRESETS) count = ANIMATION_MAX_PRESETS;
+        for (int i = 0; i < count; i++) {
+            cJSON *item = cJSON_GetArrayItem(presets_arr, i);
+            animation_preset_t *p = &config->animation_presets[i];
+
+            cJSON *v;
+            v = cJSON_GetObjectItem(item, "name");
+            if (cJSON_IsString(v)) {
+                strncpy(p->name, v->valuestring, sizeof(p->name) - 1);
+                p->name[sizeof(p->name) - 1] = '\0';
+            }
+
+            v = cJSON_GetObjectItem(item, "wavelength");
+            if (cJSON_IsNumber(v)) {
+                float val = (float)v->valuedouble;
+                if (val >= 2.0f && val <= 300.0f) p->wavelength = val;
+            }
+
+            v = cJSON_GetObjectItem(item, "amplitude");
+            if (cJSON_IsNumber(v)) { uint8_t val = (uint8_t)v->valuedouble; if (val <= 100) p->amplitude = val; }
+
+            v = cJSON_GetObjectItem(item, "speed");
+            if (cJSON_IsNumber(v)) {
+                float val = (float)v->valuedouble;
+                if (val >= 0.0f && val <= 5.0f) p->speed = val;
+            }
+
+            v = cJSON_GetObjectItem(item, "base_brightness");
+            if (cJSON_IsNumber(v)) { uint8_t val = (uint8_t)v->valuedouble; if (val <= 100) p->base_brightness = val; }
+
+            v = cJSON_GetObjectItem(item, "variation");
+            if (cJSON_IsNumber(v)) { uint8_t val = (uint8_t)v->valuedouble; if (val <= 100) p->variation = val; }
+
+            v = cJSON_GetObjectItem(item, "color_temp");
+            if (cJSON_IsNumber(v)) { uint16_t val = (uint16_t)v->valuedouble; if (val >= 2000 && val <= 6500) p->color_temp = val; }
+        }
+    }
+
+    // Dark mode — if present, replace all 3 slots
+    cJSON *dark_arr = cJSON_GetObjectItem(json, "dark_mode");
+    if (cJSON_IsArray(dark_arr)) {
+        memset(config->dark_schedules, 0, sizeof(config->dark_schedules));
+        int count = cJSON_GetArraySize(dark_arr);
+        if (count > DARK_MODE_MAX_SCHEDULES) count = DARK_MODE_MAX_SCHEDULES;
+        for (int i = 0; i < count; i++) {
+            cJSON *item = cJSON_GetArrayItem(dark_arr, i);
+            dark_mode_schedule_t *s = &config->dark_schedules[i];
+
+            cJSON *v;
+            v = cJSON_GetObjectItem(item, "enabled");
+            if (cJSON_IsBool(v)) s->enabled = cJSON_IsTrue(v);
+
+            v = cJSON_GetObjectItem(item, "start_hour");
+            if (cJSON_IsNumber(v)) { uint8_t val = (uint8_t)v->valuedouble; if (val <= 23) s->start_hour = val; }
+
+            v = cJSON_GetObjectItem(item, "start_minute");
+            if (cJSON_IsNumber(v)) { uint8_t val = (uint8_t)v->valuedouble; if (val <= 59) s->start_minute = val; }
+
+            v = cJSON_GetObjectItem(item, "end_hour");
+            if (cJSON_IsNumber(v)) { uint8_t val = (uint8_t)v->valuedouble; if (val <= 23) s->end_hour = val; }
+
+            v = cJSON_GetObjectItem(item, "end_minute");
+            if (cJSON_IsNumber(v)) { uint8_t val = (uint8_t)v->valuedouble; if (val <= 59) s->end_minute = val; }
+
+            v = cJSON_GetObjectItem(item, "days_mask");
+            if (cJSON_IsNumber(v)) s->days_mask = (uint8_t)v->valuedouble;
+
+            v = cJSON_GetObjectItem(item, "allow_override");
+            if (cJSON_IsBool(v)) s->allow_override = cJSON_IsTrue(v);
+        }
+    }
+
+    config_manager_save();
+    sunrise_engine_update_schedule();
+    cJSON_Delete(json);
+
+    cJSON *resp = cJSON_CreateObject();
+    cJSON_AddBoolToObject(resp, "success", true);
+    cJSON_AddBoolToObject(resp, "restart_required", restart_required);
+    return send_json_response(req, resp);
+}
+
+// POST /api/factory-reset
+static esp_err_t api_factory_reset_handler(httpd_req_t *req)
+{
+    ESP_LOGW(TAG, "Factory reset requested via API");
+
+    device_config_t *config = config_manager_get();
+
+    // Preserve WiFi credentials and setup flag
+    wifi_config_stored_t saved_wifi;
+    memcpy(&saved_wifi, &config->wifi, sizeof(saved_wifi));
+    bool saved_setup = config->setup_complete;
+
+    // Erase NVS and reset all defaults
+    config_manager_factory_reset();
+
+    // Restore WiFi credentials and setup flag
+    memcpy(&config->wifi, &saved_wifi, sizeof(saved_wifi));
+    config->setup_complete = saved_setup;
+    config_manager_save();
+
+    cJSON *resp = cJSON_CreateObject();
+    cJSON_AddBoolToObject(resp, "success", true);
+    send_json_response(req, resp);
+
+    vTaskDelay(pdMS_TO_TICKS(500));
+    esp_restart();
+    return ESP_OK;
+}
+
+// POST /api/reboot
+static esp_err_t api_reboot_handler(httpd_req_t *req)
+{
+    cJSON *resp = cJSON_CreateObject();
+    cJSON_AddBoolToObject(resp, "success", true);
+    send_json_response(req, resp);
+    vTaskDelay(pdMS_TO_TICKS(500));
+    esp_restart();
+    return ESP_OK;
+}
+
 esp_err_t web_server_start(void)
 {
     if (server != NULL) {
@@ -800,7 +1167,7 @@ esp_err_t web_server_start(void)
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.uri_match_fn = httpd_uri_match_wildcard;
-    config.max_uri_handlers = 20;
+    config.max_uri_handlers = 24;
     config.lru_purge_enable = true;
     config.max_open_sockets = 7;  // Reduced to avoid socket exhaustion
 
@@ -836,6 +1203,12 @@ esp_err_t web_server_start(void)
     httpd_uri_t api_darkmode_get = { .uri = "/api/darkmode", .method = HTTP_GET, .handler = api_darkmode_get_handler };
     httpd_uri_t api_darkmode_post = { .uri = "/api/darkmode", .method = HTTP_POST, .handler = api_darkmode_post_handler };
 
+    // Config export/import and reboot
+    httpd_uri_t api_config_export = { .uri = "/api/config/export", .method = HTTP_GET, .handler = api_config_export_handler };
+    httpd_uri_t api_config_import = { .uri = "/api/config/import", .method = HTTP_POST, .handler = api_config_import_handler };
+    httpd_uri_t api_factory_reset = { .uri = "/api/factory-reset", .method = HTTP_POST, .handler = api_factory_reset_handler };
+    httpd_uri_t api_reboot = { .uri = "/api/reboot", .method = HTTP_POST, .handler = api_reboot_handler };
+
     // CORS preflight
     httpd_uri_t options = { .uri = "/api/*", .method = HTTP_OPTIONS, .handler = options_handler };
 
@@ -857,6 +1230,10 @@ esp_err_t web_server_start(void)
     httpd_register_uri_handler(server, &api_anim_stop);
     httpd_register_uri_handler(server, &api_darkmode_get);
     httpd_register_uri_handler(server, &api_darkmode_post);
+    httpd_register_uri_handler(server, &api_config_export);
+    httpd_register_uri_handler(server, &api_config_import);
+    httpd_register_uri_handler(server, &api_factory_reset);
+    httpd_register_uri_handler(server, &api_reboot);
     httpd_register_uri_handler(server, &options);
 
     // 404 handler for captive portal

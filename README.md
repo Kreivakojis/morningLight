@@ -12,6 +12,7 @@ ESP32-based sunrise alarm clock with RGB LED control and web interface.
   - Automatic fallback to AP mode if connection fails
   - Captive portal for easy configuration
   - Network scanning and selection via web UI
+  - Manual SSID entry for hidden networks
 
 - **Web Interface**
   - Mobile-first responsive design
@@ -19,6 +20,7 @@ ESP32-based sunrise alarm clock with RGB LED control and web interface.
   - Quick Test panel with color temperature and brightness control
   - Alarm management (up to 8 alarms)
   - Settings page for timezone, brightness limit, and PWM frequency
+  - Factory reset (resets all settings to defaults, preserves WiFi credentials)
 
 - **LED Controller**
   - Two LED types supported (selectable via web UI):
@@ -165,6 +167,10 @@ ESP32 GND     ---> WS2811 GND
 | `/api/animation/stop` | POST | Stop running animation |
 | `/api/darkmode` | GET | Get all dark mode schedules |
 | `/api/darkmode` | POST | Create/update dark mode schedule |
+| `/api/factory-reset` | POST | Factory reset (preserves WiFi credentials) |
+| `/api/reboot` | POST | Reboot device |
+| `/api/config/export` | GET | Export configuration as JSON file |
+| `/api/config/import` | POST | Import configuration from JSON file |
 
 ## Wave Animation Parameters
 

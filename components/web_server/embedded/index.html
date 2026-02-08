@@ -274,8 +274,9 @@
                 <h2>WiFi Setup</h2>
                 <div id="wifi-networks"></div>
                 <button id="btn-scan" class="btn btn-full">Scan Networks</button>
+                <button id="btn-manual-wifi" class="btn btn-full" style="margin-top:10px">Connect Manually</button>
                 <div id="wifi-connect-form" style="display:none">
-                    <input type="text" id="wifi-ssid" placeholder="Network name" readonly>
+                    <input type="text" id="wifi-ssid" placeholder="Network name">
                     <input type="password" id="wifi-password" placeholder="Password">
                     <button id="btn-connect" class="btn btn-primary btn-full">Connect</button>
                 </div>
@@ -349,6 +350,28 @@
                     <span id="max-brightness-val">100%</span>
                 </div>
                 <button id="btn-save-settings" class="btn btn-primary btn-full">Save Settings</button>
+            </div>
+
+            <!-- Configuration Export/Import -->
+            <div class="card">
+                <h2>Configuration</h2>
+                <p class="hint">Export or import device settings as a JSON file.</p>
+                <div class="btn-row">
+                    <button id="btn-export-config" class="btn btn-full">Export Config</button>
+                </div>
+                <div class="btn-row" style="margin-top:10px">
+                    <label class="btn btn-full" style="text-align:center;cursor:pointer">
+                        Import Config
+                        <input type="file" id="file-import-config" accept=".json" style="display:none">
+                    </label>
+                </div>
+            </div>
+
+            <!-- System -->
+            <div class="card">
+                <h2>System</h2>
+                <button id="btn-reboot" class="btn btn-danger btn-full">Reboot Device</button>
+                <button id="btn-factory-reset" class="btn btn-danger btn-full" style="margin-top:10px">Factory Reset</button>
             </div>
         </section>
     </div>
