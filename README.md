@@ -78,6 +78,14 @@ ESP32-based sunrise alarm clock with RGB LED control and web interface.
   - Dark mode schedules
   - User preferences (brightness, PWM frequency)
 
+- **Temperature Monitoring**
+  - Internal NTC thermistor (10K, B=3950) on ADC
+  - Two external DS18B20 1-Wire sensors on separate buses
+  - Background polling task (configurable interval, default 5s)
+  - Readings displayed on web UI home screen
+  - Exposed via `/api/status` (null when sensor not connected)
+  - Non-fatal: device operates normally without sensors attached
+
 - **Button Control**
   - Reset button (GPIO 0) - factory reset on long press
   - Scenario button (GPIO 4) - manual light control
@@ -97,6 +105,9 @@ ESP32-based sunrise alarm clock with RGB LED control and web interface.
 | Reset Button | 0 | Boot button, long press for factory reset |
 | Scenario Button | 4 | Manual light control |
 | Status LED | 2 | Built-in LED for status indication |
+| NTC Thermistor | 34 | Internal temperature sensor (ADC1_CH6) |
+| DS18B20 #1 | 15 | External 1-Wire temperature sensor |
+| DS18B20 #2 | 16 | External 1-Wire temperature sensor |
 
 ## Hardware
 
@@ -139,7 +150,7 @@ ESP32 GND     ---> WS2811 GND
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/status` | GET | Device status (WiFi, time, brightness, dark_mode_active) |
+| `/api/status` | GET | Device status (WiFi, time, brightness, dark_mode_active, temperatures) |
 | `/api/wifi/scan` | GET | Scan for WiFi networks |
 | `/api/wifi/connect` | POST | Connect to WiFi network |
 | `/api/config` | GET | Get device configuration |
@@ -222,6 +233,10 @@ Default settings can be modified in `sdkconfig.defaults` or via `idf.py menuconf
 - `ML_SUNRISE_DEFAULT_DURATION_MIN` - Default sunrise duration
 - `ML_ANIM_UPDATE_INTERVAL_MS` - Animation frame rate (default 33ms = ~30fps)
 - `ML_ANIM_TASK_STACK_SIZE` - Animation task stack size
+- `ML_GPIO_NTC_ADC` - NTC thermistor ADC GPIO (default 34)
+- `ML_GPIO_DS18B20_1` / `ML_GPIO_DS18B20_2` - DS18B20 sensor GPIOs (default 15, 16)
+- `ML_NTC_BETA` - NTC beta coefficient (default 3950)
+- `ML_TEMP_UPDATE_INTERVAL_MS` - Temperature polling interval (default 5000ms)
 
 ## Future Features
 
@@ -235,6 +250,7 @@ Default settings can be modified in `sdkconfig.defaults` or via `idf.py menuconf
 - [ ] Home Assistant auto-discovery
 - [ ] OTA firmware updates
 - [ ] Sleep tracking integration
+- [x] Temperature monitoring (NTC + DS18B20)
 - [ ] Ambient light sensor for auto-brightness
 - [ ] Multi-room synchronization
 

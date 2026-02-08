@@ -1,4 +1,5 @@
 #include <string.h>
+#include <math.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_http_server.h"
@@ -15,6 +16,7 @@
 #include "sunrise_engine.h"
 #include "animation_engine.h"
 #include "dns_server.h"
+#include "temperature_manager.h"
 
 static const char *TAG = "web_server";
 
@@ -148,6 +150,24 @@ static esp_err_t api_status_handler(httpd_req_t *req)
     // Config status
     device_config_t *config = config_manager_get();
     cJSON_AddBoolToObject(json, "setup_complete", config ? config->setup_complete : false);
+
+    // Temperature sensors
+    float temp;
+    if (temperature_manager_get_temperature(TEMP_SENSOR_INTERNAL, &temp) == ESP_OK) {
+        cJSON_AddNumberToObject(json, "temp_internal", roundf(temp * 10.0f) / 10.0f);
+    } else {
+        cJSON_AddNullToObject(json, "temp_internal");
+    }
+    if (temperature_manager_get_temperature(TEMP_SENSOR_EXTERNAL_1, &temp) == ESP_OK) {
+        cJSON_AddNumberToObject(json, "temp_external_1", roundf(temp * 10.0f) / 10.0f);
+    } else {
+        cJSON_AddNullToObject(json, "temp_external_1");
+    }
+    if (temperature_manager_get_temperature(TEMP_SENSOR_EXTERNAL_2, &temp) == ESP_OK) {
+        cJSON_AddNumberToObject(json, "temp_external_2", roundf(temp * 10.0f) / 10.0f);
+    } else {
+        cJSON_AddNullToObject(json, "temp_external_2");
+    }
 
     return send_json_response(req, json);
 }

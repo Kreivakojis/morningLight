@@ -55,6 +55,11 @@ async function updateStatus() {
         $('#sunrise-status').textContent = status.sunrise_state || 'idle';
         $('#brightness-display').textContent = `${status.brightness || 0}%`;
 
+        var fmtTemp = function(v) { return (v !== null && v !== undefined) ? v.toFixed(1) + '\u00B0C' : '--'; };
+        $('#temp-internal').textContent = fmtTemp(status.temp_internal);
+        $('#temp-external-1').textContent = fmtTemp(status.temp_external_1);
+        $('#temp-external-2').textContent = fmtTemp(status.temp_external_2);
+
         // Dark mode indicator
         const banner = $('#dark-mode-banner');
         if (banner) {

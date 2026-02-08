@@ -187,4 +187,41 @@ menu "MorningLight Configuration"
                 Stack size for the animation FreeRTOS task.
     endmenu
 
+    menu "Temperature Sensors"
+        config ML_GPIO_NTC_ADC
+            int "NTC Thermistor ADC GPIO"
+            default 34
+            help
+                GPIO pin for NTC thermistor (must be ADC1 channel).
+
+        config ML_GPIO_DS18B20_1
+            int "DS18B20 Sensor 1 GPIO"
+            default 15
+            help
+                GPIO pin for first DS18B20 temperature sensor (1-Wire).
+
+        config ML_GPIO_DS18B20_2
+            int "DS18B20 Sensor 2 GPIO"
+            default 16
+            help
+                GPIO pin for second DS18B20 temperature sensor (1-Wire).
+
+        config ML_NTC_BETA
+            int "NTC Beta Coefficient"
+            default 3950
+
+        config ML_NTC_R_NOMINAL
+            int "NTC Nominal Resistance (ohms)"
+            default 10000
+
+        config ML_NTC_R_PULLUP
+            int "NTC Pull-up Resistance (ohms)"
+            default 10000
+
+        config ML_TEMP_UPDATE_INTERVAL_MS
+            int "Temperature Update Interval (ms)"
+            default 5000
+            range 1000 30000
+    endmenu
+
 endmenu

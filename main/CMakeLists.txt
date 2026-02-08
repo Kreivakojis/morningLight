@@ -12,6 +12,7 @@ idf_component_register(
         sunrise_engine
         animation_engine
         button_handler
+        temperature_manager
         esp_event
         nvs_flash
 )

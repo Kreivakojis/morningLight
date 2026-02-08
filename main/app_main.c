@@ -17,6 +17,7 @@
 #include "sunrise_engine.h"
 #include "animation_engine.h"
 #include "button_handler.h"
+#include "temperature_manager.h"
 
 static const char *TAG = "app_main";
 
@@ -122,6 +123,8 @@ void app_main(void)
     ESP_ERROR_CHECK(led_controller_init());
 
     ESP_ERROR_CHECK(button_handler_init());
+
+    ESP_ERROR_CHECK(temperature_manager_init());
 
     ESP_ERROR_CHECK(time_manager_init());
 
