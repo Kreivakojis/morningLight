@@ -135,6 +135,16 @@ static esp_err_t api_status_handler(httpd_req_t *req)
         sunrise_engine_get_state_str());
     cJSON_AddNumberToObject(json, "brightness", led_controller_get_brightness());
 
+    // Dark mode status
+    bool dm_active = false;
+    if (time_manager_is_synced()) {
+        int d = time_manager_get_day_of_week();
+        int h = time_manager_get_hour();
+        int m = time_manager_get_minute();
+        if (d >= 0) dm_active = config_manager_is_dark_mode_blocking(d, h, m);
+    }
+    cJSON_AddBoolToObject(json, "dark_mode_active", dm_active);
+
     // Config status
     device_config_t *config = config_manager_get();
     cJSON_AddBoolToObject(json, "setup_complete", config ? config->setup_complete : false);
@@ -432,6 +442,20 @@ static esp_err_t api_led_test_handler(httpd_req_t *req)
     cJSON *color_temp = cJSON_GetObjectItem(json, "color_temp");
     cJSON *brightness = cJSON_GetObjectItem(json, "brightness");
 
+    // Check dark mode (skip for "off" commands)
+    if (!cJSON_IsTrue(off) && time_manager_is_synced()) {
+        int d = time_manager_get_day_of_week();
+        int h = time_manager_get_hour();
+        int m = time_manager_get_minute();
+        if (d >= 0 && config_manager_is_dark_mode_blocking(d, h, m)) {
+            cJSON_Delete(json);
+            cJSON *resp = cJSON_CreateObject();
+            cJSON_AddBoolToObject(resp, "success", false);
+            cJSON_AddStringToObject(resp, "error", "Dark mode active");
+            return send_json_response(req, resp);
+        }
+    }
+
     if (cJSON_IsTrue(off)) {
         led_controller_off();
     } else if (cJSON_IsNumber(color_temp) && cJSON_IsNumber(brightness)) {
@@ -589,6 +613,19 @@ static esp_err_t api_animation_start_handler(httpd_req_t *req)
     int id = (int)preset_id->valuedouble;
     cJSON_Delete(json);
 
+    // Check dark mode before starting animation
+    if (time_manager_is_synced()) {
+        int d = time_manager_get_day_of_week();
+        int h = time_manager_get_hour();
+        int m = time_manager_get_minute();
+        if (d >= 0 && config_manager_is_dark_mode_blocking(d, h, m)) {
+            cJSON *resp = cJSON_CreateObject();
+            cJSON_AddBoolToObject(resp, "success", false);
+            cJSON_AddStringToObject(resp, "error", "Dark mode active");
+            return send_json_response(req, resp);
+        }
+    }
+
     esp_err_t ret = animation_engine_start(id);
 
     cJSON *resp = cJSON_CreateObject();
@@ -606,6 +643,99 @@ static esp_err_t api_animation_stop_handler(httpd_req_t *req)
 
     cJSON *resp = cJSON_CreateObject();
     cJSON_AddBoolToObject(resp, "success", true);
+    return send_json_response(req, resp);
+}
+
+// GET /api/darkmode
+static esp_err_t api_darkmode_get_handler(httpd_req_t *req)
+{
+    device_config_t *config = config_manager_get();
+    cJSON *json = cJSON_CreateObject();
+    cJSON *schedules = cJSON_AddArrayToObject(json, "schedules");
+
+    for (int i = 0; i < DARK_MODE_MAX_SCHEDULES; i++) {
+        dark_mode_schedule_t *s = &config->dark_schedules[i];
+        cJSON *item = cJSON_CreateObject();
+        cJSON_AddNumberToObject(item, "id", i);
+        cJSON_AddBoolToObject(item, "enabled", s->enabled);
+        cJSON_AddNumberToObject(item, "start_hour", s->start_hour);
+        cJSON_AddNumberToObject(item, "start_minute", s->start_minute);
+        cJSON_AddNumberToObject(item, "end_hour", s->end_hour);
+        cJSON_AddNumberToObject(item, "end_minute", s->end_minute);
+        cJSON_AddNumberToObject(item, "days_mask", s->days_mask);
+        cJSON_AddBoolToObject(item, "allow_override", s->allow_override);
+        cJSON_AddItemToArray(schedules, item);
+    }
+
+    return send_json_response(req, json);
+}
+
+// POST /api/darkmode
+static esp_err_t api_darkmode_post_handler(httpd_req_t *req)
+{
+    cJSON *json = parse_json_body(req);
+    if (json == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    device_config_t *config = config_manager_get();
+
+    cJSON *id_item = cJSON_GetObjectItem(json, "id");
+    if (!cJSON_IsNumber(id_item)) {
+        cJSON_Delete(json);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing id");
+        return ESP_FAIL;
+    }
+
+    int id = (int)id_item->valuedouble;
+    if (id < 0 || id >= DARK_MODE_MAX_SCHEDULES) {
+        cJSON_Delete(json);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid id (0-2)");
+        return ESP_FAIL;
+    }
+
+    dark_mode_schedule_t *s = &config->dark_schedules[id];
+
+    cJSON *enabled = cJSON_GetObjectItem(json, "enabled");
+    if (cJSON_IsBool(enabled)) s->enabled = cJSON_IsTrue(enabled);
+
+    cJSON *start_hour = cJSON_GetObjectItem(json, "start_hour");
+    if (cJSON_IsNumber(start_hour)) {
+        uint8_t v = (uint8_t)start_hour->valuedouble;
+        if (v <= 23) s->start_hour = v;
+    }
+
+    cJSON *start_minute = cJSON_GetObjectItem(json, "start_minute");
+    if (cJSON_IsNumber(start_minute)) {
+        uint8_t v = (uint8_t)start_minute->valuedouble;
+        if (v <= 59) s->start_minute = v;
+    }
+
+    cJSON *end_hour = cJSON_GetObjectItem(json, "end_hour");
+    if (cJSON_IsNumber(end_hour)) {
+        uint8_t v = (uint8_t)end_hour->valuedouble;
+        if (v <= 23) s->end_hour = v;
+    }
+
+    cJSON *end_minute = cJSON_GetObjectItem(json, "end_minute");
+    if (cJSON_IsNumber(end_minute)) {
+        uint8_t v = (uint8_t)end_minute->valuedouble;
+        if (v <= 59) s->end_minute = v;
+    }
+
+    cJSON *days_mask = cJSON_GetObjectItem(json, "days_mask");
+    if (cJSON_IsNumber(days_mask)) s->days_mask = (uint8_t)days_mask->valuedouble;
+
+    cJSON *allow_override = cJSON_GetObjectItem(json, "allow_override");
+    if (cJSON_IsBool(allow_override)) s->allow_override = cJSON_IsTrue(allow_override);
+
+    config_manager_save();
+    cJSON_Delete(json);
+
+    cJSON *resp = cJSON_CreateObject();
+    cJSON_AddBoolToObject(resp, "success", true);
+    cJSON_AddNumberToObject(resp, "id", id);
     return send_json_response(req, resp);
 }
 
@@ -682,6 +812,10 @@ esp_err_t web_server_start(void)
     httpd_uri_t api_anim_start = { .uri = "/api/animation/start", .method = HTTP_POST, .handler = api_animation_start_handler };
     httpd_uri_t api_anim_stop = { .uri = "/api/animation/stop", .method = HTTP_POST, .handler = api_animation_stop_handler };
 
+    // Dark mode endpoints
+    httpd_uri_t api_darkmode_get = { .uri = "/api/darkmode", .method = HTTP_GET, .handler = api_darkmode_get_handler };
+    httpd_uri_t api_darkmode_post = { .uri = "/api/darkmode", .method = HTTP_POST, .handler = api_darkmode_post_handler };
+
     // CORS preflight
     httpd_uri_t options = { .uri = "/api/*", .method = HTTP_OPTIONS, .handler = options_handler };
 
@@ -701,6 +835,8 @@ esp_err_t web_server_start(void)
     httpd_register_uri_handler(server, &api_anim_presets_post);
     httpd_register_uri_handler(server, &api_anim_start);
     httpd_register_uri_handler(server, &api_anim_stop);
+    httpd_register_uri_handler(server, &api_darkmode_get);
+    httpd_register_uri_handler(server, &api_darkmode_post);
     httpd_register_uri_handler(server, &options);
 
     // 404 handler for captive portal

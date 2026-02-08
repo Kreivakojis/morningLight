@@ -10,6 +10,8 @@
 extern "C" {
 #endif
 
+#define DARK_MODE_MAX_SCHEDULES 3
+
 /**
  * @brief WiFi credentials storage
  */
@@ -42,6 +44,19 @@ typedef enum {
 } config_led_type_t;
 
 /**
+ * @brief Dark mode schedule
+ */
+typedef struct {
+    bool enabled;
+    uint8_t start_hour;     // 0-23
+    uint8_t start_minute;   // 0-59
+    uint8_t end_hour;       // 0-23
+    uint8_t end_minute;     // 0-59
+    uint8_t days_mask;      // Bit mask: bit 0 = Sunday, bit 6 = Saturday
+    bool allow_override;    // When true, this schedule doesn't block lights
+} dark_mode_schedule_t;
+
+/**
  * @brief Device configuration structure
  */
 typedef struct {
@@ -57,6 +72,9 @@ typedef struct {
     // Animation presets
     animation_preset_t animation_presets[ANIMATION_MAX_PRESETS];
     int8_t active_animation;    // -1 = none, 0-4 = preset index
+
+    // Dark mode schedules (added at end for NVS compatibility)
+    dark_mode_schedule_t dark_schedules[DARK_MODE_MAX_SCHEDULES];
 } device_config_t;
 
 /**
@@ -119,6 +137,16 @@ alarm_config_t *config_manager_get_next_alarm(uint8_t current_day,
                                                uint8_t current_hour,
                                                uint8_t current_minute,
                                                uint8_t *alarm_id);
+
+/**
+ * @brief Check if dark mode is currently blocking lights
+ *
+ * @param day Day of week (0=Sunday)
+ * @param hour Current hour (0-23)
+ * @param minute Current minute (0-59)
+ * @return true if dark mode is active and blocking
+ */
+bool config_manager_is_dark_mode_blocking(uint8_t day, uint8_t hour, uint8_t minute);
 
 #ifdef __cplusplus
 }

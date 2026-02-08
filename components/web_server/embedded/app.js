@@ -19,6 +19,7 @@ const api = {
 let alarms = [];
 let status = {};
 let animationPresets = [];
+let darkModeSchedules = [];
 
 // DOM elements
 const $ = (sel) => document.querySelector(sel);
@@ -54,6 +55,12 @@ async function updateStatus() {
         $('#sunrise-status').textContent = status.sunrise_state || 'idle';
         $('#brightness-display').textContent = `${status.brightness || 0}%`;
 
+        // Dark mode indicator
+        const banner = $('#dark-mode-banner');
+        if (banner) {
+            banner.style.display = status.dark_mode_active ? 'block' : 'none';
+        }
+
     } catch (e) {
         console.error('Status update failed:', e);
     }
@@ -61,7 +68,7 @@ async function updateStatus() {
 
 // LED test - color temperature and brightness sliders
 $('#test-color-temp').addEventListener('input', (e) => {
-    $('#test-color-temp-val').textContent = `${e.target.value}K`;
+    $('#test-color-temp-val').textContent = `${colorTempFromSlider(parseInt(e.target.value))}K`;
 });
 
 $('#test-brightness').addEventListener('input', (e) => {
@@ -69,7 +76,7 @@ $('#test-brightness').addEventListener('input', (e) => {
 });
 
 $('#btn-apply-test').addEventListener('click', async () => {
-    const color_temp = parseInt($('#test-color-temp').value);
+    const color_temp = colorTempFromSlider(parseInt($('#test-color-temp').value));
     const brightness = parseInt($('#test-brightness').value);
     await api.post('/api/led/test', { color_temp, brightness });
 });
@@ -427,6 +434,29 @@ async function loadAnimationPresets() {
     }
 }
 
+// Logarithmic slider conversions
+// Speed: 0.05 - 5.0 Hz, slider 0-100
+function speedFromSlider(pos) {
+    var hz = 0.05 * Math.pow(100, pos / 100);
+    return Math.round(hz / 0.05) * 0.05;
+}
+function speedToSlider(hz) {
+    if (hz <= 0.05) return 0;
+    return Math.round(50 * Math.log10(hz / 0.05));
+}
+function formatSpeed(hz) {
+    return hz < 1.0 ? hz.toFixed(2) : hz.toFixed(1);
+}
+
+// Color temp: 2000 - 6500K, slider 0-100
+function colorTempFromSlider(pos) {
+    return Math.round(2000 * Math.pow(3.25, pos / 100) / 100) * 100;
+}
+function colorTempToSlider(k) {
+    if (k <= 2000) return 0;
+    return Math.round(100 * Math.log(k / 2000) / Math.log(3.25));
+}
+
 function loadPresetIntoForm(id) {
     const preset = animationPresets.find(p => p.id === id);
     if (!preset) return;
@@ -434,15 +464,15 @@ function loadPresetIntoForm(id) {
     $('#anim-name').value = preset.name;
     $('#anim-wavelength').value = preset.wavelength;
     $('#anim-wavelength-val').textContent = preset.wavelength;
-    $('#anim-amplitude').value = preset.amplitude;
-    $('#anim-amplitude-val').textContent = `${preset.amplitude}%`;
-    $('#anim-speed').value = Math.round(preset.speed * 10);
-    $('#anim-speed-val').textContent = `${preset.speed.toFixed(1)} Hz`;
-    $('#anim-base').value = preset.base_brightness;
-    $('#anim-base-val').textContent = `${preset.base_brightness}%`;
-    $('#anim-variation').value = preset.variation;
-    $('#anim-variation-val').textContent = `${preset.variation}%`;
-    $('#anim-color-temp').value = preset.color_temp;
+    $('#anim-amplitude').value = Math.round(preset.amplitude / 10) * 10;
+    $('#anim-amplitude-val').textContent = `${Math.round(preset.amplitude / 10) * 10}%`;
+    $('#anim-speed').value = speedToSlider(preset.speed);
+    $('#anim-speed-val').textContent = `${formatSpeed(preset.speed)} Hz`;
+    $('#anim-base').value = Math.round(preset.base_brightness / 10) * 10;
+    $('#anim-base-val').textContent = `${Math.round(preset.base_brightness / 10) * 10}%`;
+    $('#anim-variation').value = Math.round(preset.variation / 10) * 10;
+    $('#anim-variation-val').textContent = `${Math.round(preset.variation / 10) * 10}%`;
+    $('#anim-color-temp').value = colorTempToSlider(preset.color_temp);
     $('#anim-color-temp-val').textContent = `${preset.color_temp}K`;
 }
 
@@ -460,8 +490,8 @@ $('#anim-amplitude').addEventListener('input', (e) => {
 });
 
 $('#anim-speed').addEventListener('input', (e) => {
-    const speed = e.target.value / 10;
-    $('#anim-speed-val').textContent = `${speed.toFixed(1)} Hz`;
+    const speed = speedFromSlider(parseInt(e.target.value));
+    $('#anim-speed-val').textContent = `${formatSpeed(speed)} Hz`;
 });
 
 $('#anim-base').addEventListener('input', (e) => {
@@ -473,7 +503,8 @@ $('#anim-variation').addEventListener('input', (e) => {
 });
 
 $('#anim-color-temp').addEventListener('input', (e) => {
-    $('#anim-color-temp-val').textContent = `${e.target.value}K`;
+    const k = colorTempFromSlider(parseInt(e.target.value));
+    $('#anim-color-temp-val').textContent = `${k}K`;
 });
 
 // Save animation preset
@@ -484,10 +515,10 @@ $('#anim-save').addEventListener('click', async () => {
         name: $('#anim-name').value,
         wavelength: parseFloat($('#anim-wavelength').value),
         amplitude: parseInt($('#anim-amplitude').value),
-        speed: parseInt($('#anim-speed').value) / 10,
+        speed: parseFloat(speedFromSlider(parseInt($('#anim-speed').value)).toFixed(3)),
         base_brightness: parseInt($('#anim-base').value),
         variation: parseInt($('#anim-variation').value),
-        color_temp: parseInt($('#anim-color-temp').value)
+        color_temp: colorTempFromSlider(parseInt($('#anim-color-temp').value))
     };
 
     const result = await api.post('/api/animation/presets', preset);
@@ -517,9 +548,147 @@ $('#anim-stop').addEventListener('click', async () => {
     $('#anim-running').style.color = '';
 });
 
+// Dark Mode
+async function loadDarkMode() {
+    try {
+        const data = await api.get('/api/darkmode');
+        darkModeSchedules = data.schedules || [];
+        renderDarkMode();
+    } catch (e) {
+        console.error('Failed to load dark mode:', e);
+    }
+}
+
+function renderDarkMode() {
+    const list = $('#darkmode-list');
+    const enabled = darkModeSchedules.filter(s => s.enabled);
+
+    if (enabled.length === 0) {
+        list.innerHTML = '<p class="loading" style="opacity:0.5">No schedules</p>';
+        return;
+    }
+
+    const days = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+    list.innerHTML = enabled.map(s => {
+        const start = `${String(s.start_hour).padStart(2,'0')}:${String(s.start_minute).padStart(2,'0')}`;
+        const end = `${String(s.end_hour).padStart(2,'0')}:${String(s.end_minute).padStart(2,'0')}`;
+        const activeDays = days.filter((_, i) => s.days_mask & (1 << i)).join(' ');
+        const override = s.allow_override ? ' (override)' : '';
+
+        return `
+            <div class="alarm-item darkmode-item" data-id="${s.id}">
+                <div class="alarm-time">${start} - ${end}</div>
+                <div class="alarm-info">
+                    <div class="alarm-days">${activeDays}${override}</div>
+                </div>
+                <div class="alarm-toggle ${s.enabled ? 'active' : ''}" data-id="${s.id}"></div>
+            </div>
+        `;
+    }).join('');
+
+    // Toggle handlers
+    $$('.darkmode-item .alarm-toggle').forEach(toggle => {
+        toggle.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const id = parseInt(toggle.dataset.id);
+            const schedule = darkModeSchedules.find(s => s.id === id);
+            if (schedule) {
+                schedule.enabled = !schedule.enabled;
+                await api.post('/api/darkmode', schedule);
+                toggle.classList.toggle('active');
+            }
+        });
+    });
+
+    // Edit handlers
+    $$('.darkmode-item').forEach(item => {
+        item.addEventListener('click', () => editDarkMode(parseInt(item.dataset.id)));
+    });
+}
+
+function editDarkMode(id) {
+    const schedule = id >= 0 ? darkModeSchedules.find(s => s.id === id) : null;
+
+    $('#darkmode-modal-title').textContent = schedule ? 'Edit Dark Mode' : 'New Dark Mode';
+    $('#darkmode-id').value = schedule ? schedule.id : -1;
+    $('#darkmode-start-hour').value = schedule ? schedule.start_hour : 22;
+    $('#darkmode-start-minute').value = schedule ? schedule.start_minute : 0;
+    $('#darkmode-end-hour').value = schedule ? schedule.end_hour : 6;
+    $('#darkmode-end-minute').value = schedule ? schedule.end_minute : 0;
+    $('#darkmode-override').checked = schedule ? schedule.allow_override : false;
+
+    $('#btn-darkmode-delete').style.display = schedule ? '' : 'none';
+
+    const daysMask = schedule ? schedule.days_mask : 0b1111111;
+    $$('#darkmode-days input').forEach(cb => {
+        cb.checked = (daysMask & (1 << parseInt(cb.dataset.day))) !== 0;
+    });
+
+    $('#darkmode-modal').classList.add('show');
+}
+
+$('#btn-add-darkmode').addEventListener('click', () => {
+    const enabledCount = darkModeSchedules.filter(s => s.enabled).length;
+    if (enabledCount >= 3) {
+        alert('Maximum 3 dark mode schedules');
+        return;
+    }
+    editDarkMode(-1);
+});
+
+$('#btn-darkmode-cancel').addEventListener('click', () => {
+    $('#darkmode-modal').classList.remove('show');
+});
+
+$('#btn-darkmode-delete').addEventListener('click', async () => {
+    const id = parseInt($('#darkmode-id').value);
+    if (id >= 0) {
+        await api.post('/api/darkmode', { id, enabled: false,
+            start_hour: 0, start_minute: 0, end_hour: 0, end_minute: 0,
+            days_mask: 0, allow_override: false });
+        $('#darkmode-modal').classList.remove('show');
+        loadDarkMode();
+    }
+});
+
+$('#darkmode-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    let daysMask = 0;
+    $$('#darkmode-days input').forEach(cb => {
+        if (cb.checked) daysMask |= (1 << parseInt(cb.dataset.day));
+    });
+
+    const schedule = {
+        id: parseInt($('#darkmode-id').value),
+        enabled: true,
+        start_hour: parseInt($('#darkmode-start-hour').value),
+        start_minute: parseInt($('#darkmode-start-minute').value),
+        end_hour: parseInt($('#darkmode-end-hour').value),
+        end_minute: parseInt($('#darkmode-end-minute').value),
+        days_mask: daysMask,
+        allow_override: $('#darkmode-override').checked
+    };
+
+    // Find free slot if new
+    if (schedule.id < 0) {
+        const used = darkModeSchedules.filter(s => s.enabled).map(s => s.id);
+        for (let i = 0; i < 3; i++) {
+            if (!used.includes(i)) { schedule.id = i; break; }
+        }
+        if (schedule.id < 0) { alert('Maximum 3 schedules'); return; }
+    }
+
+    await api.post('/api/darkmode', schedule);
+    $('#darkmode-modal').classList.remove('show');
+    loadDarkMode();
+});
+
 // Init
 updateStatus();
 loadAlarms();
+loadDarkMode();
 loadConfig();
 loadAnimationPresets();
 

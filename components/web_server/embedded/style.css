@@ -412,3 +412,44 @@ select {
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
+
+/* Dark mode */
+.hint {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin: 4px 0 12px;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary);
+}
+
+.btn-danger {
+    background: #dc2626;
+    color: white;
+}
+
+.btn-danger:active {
+    background: #b91c1c;
+}
+
+.dark-mode-banner {
+    margin-top: 12px;
+    padding: 8px 12px;
+    background: #7c3aed;
+    color: white;
+    border-radius: 8px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 500;
+}

@@ -97,13 +97,15 @@ void wave_generator_compute(
  * @param preset Animation preset with parameters
  * @param time_sec Current time in seconds (for temporal animation)
  * @param base_override Base brightness override (0-100), or -1 to use preset value
+ * @param amplitude_scale Scale factor for amplitude (0.0-1.0), negative to use full amplitude
  */
 void wave_generator_compute_with_base(
     uint8_t *brightness_out,
     uint16_t led_count,
     const animation_preset_t *preset,
     float time_sec,
-    int16_t base_override)
+    int16_t base_override,
+    float amplitude_scale)
 {
     if (!brightness_out || !preset || led_count == 0) {
         return;
@@ -113,6 +115,12 @@ void wave_generator_compute_with_base(
     float spatial_freq = (2.0f * M_PI) / preset->wavelength;
     float temporal_phase = time_sec * preset->speed * 2.0f * M_PI;
     float amplitude = preset->amplitude / 100.0f;
+
+    // Scale amplitude with ramp progress (animated sunrise)
+    if (amplitude_scale >= 0.0f) {
+        if (amplitude_scale > 1.0f) amplitude_scale = 1.0f;
+        amplitude *= amplitude_scale;
+    }
 
     // Use override if provided, otherwise use preset value
     float base = (base_override >= 0)

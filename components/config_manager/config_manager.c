@@ -222,6 +222,28 @@ alarm_config_t *config_manager_get_alarm(uint8_t id)
     return &config.alarms[id];
 }
 
+bool config_manager_is_dark_mode_blocking(uint8_t day, uint8_t hour, uint8_t minute)
+{
+    uint16_t now = hour * 60 + minute;
+
+    for (int i = 0; i < DARK_MODE_MAX_SCHEDULES; i++) {
+        dark_mode_schedule_t *s = &config.dark_schedules[i];
+        if (!s->enabled || s->allow_override) continue;
+        if (!(s->days_mask & (1 << day))) continue;
+
+        uint16_t start = s->start_hour * 60 + s->start_minute;
+        uint16_t end = s->end_hour * 60 + s->end_minute;
+
+        if (start <= end) {
+            if (now >= start && now < end) return true;
+        } else {
+            // Overnight window (e.g., 22:00-06:00)
+            if (now >= start || now < end) return true;
+        }
+    }
+    return false;
+}
+
 alarm_config_t *config_manager_get_next_alarm(uint8_t current_day,
                                                uint8_t current_hour,
                                                uint8_t current_minute,

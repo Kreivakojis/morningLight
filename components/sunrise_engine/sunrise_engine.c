@@ -20,7 +20,7 @@ extern void animation_engine_stop(void);
 extern float sunrise_curve_apply(sunrise_curve_t curve, float t);
 
 // External wave generator function for animated sunrise
-extern void wave_generator_compute_with_base(uint8_t *, uint16_t, const animation_preset_t *, float, int16_t);
+extern void wave_generator_compute_with_base(uint8_t *, uint16_t, const animation_preset_t *, float, int16_t, float);
 
 // External color utility function
 extern void color_utils_kelvin_to_rgb(uint16_t kelvin, uint8_t *r, uint8_t *g, uint8_t *b);
@@ -102,13 +102,14 @@ static void update_leds(float progress)
         // refresh before set_pixel_brightnesses() applies the wave, causing flicker.
         float elapsed_sec = ((xTaskGetTickCount() * portTICK_PERIOD_MS) - state.start_time_ms) / 1000.0f;
 
-        // Compute wave with ramped base
+        // Compute wave with ramped base and scaled amplitude
         wave_generator_compute_with_base(
             state.brightness_buffer,
             state.led_count,
             &state.preset_copy,
             elapsed_sec,
-            ramp_brightness  // Override base with ramping value
+            ramp_brightness,    // Override base with ramping value
+            curved_progress     // Scale amplitude with ramp progress
         );
 
         led_controller_set_pixel_brightnesses(state.brightness_buffer, state.led_count);
@@ -256,6 +257,12 @@ static void check_schedule(void)
 
     // Check if it's time to start (within 1 minute window)
     if (state.minutes_until_alarm <= 0 && state.state != SUNRISE_STATE_ACTIVE) {
+        // Check dark mode before triggering
+        if (config_manager_is_dark_mode_blocking(day, hour, minute)) {
+            ESP_LOGI(TAG, "Dark mode blocking alarm #%d", alarm_id);
+            return;
+        }
+
         // Cancel any running cooldown before starting new alarm
         if (state.state == SUNRISE_STATE_COOLDOWN) {
             set_state(SUNRISE_STATE_CANCELLED);
@@ -306,6 +313,25 @@ static void check_schedule(void)
 
 static void schedule_timer_callback(TimerHandle_t timer)
 {
+    // Dark mode enforcement: actively turn off lights
+    if (time_manager_is_synced()) {
+        int day = time_manager_get_day_of_week();
+        int hour = time_manager_get_hour();
+        int minute = time_manager_get_minute();
+
+        if (day >= 0 && config_manager_is_dark_mode_blocking(day, hour, minute)) {
+            if (state.state == SUNRISE_STATE_ACTIVE || state.state == SUNRISE_STATE_COOLDOWN) {
+                ESP_LOGI(TAG, "Dark mode active, cancelling sunrise");
+                set_state(SUNRISE_STATE_CANCELLED);
+            }
+            if (animation_engine_is_running()) {
+                ESP_LOGI(TAG, "Dark mode active, stopping animation");
+                animation_engine_stop();
+            }
+            return;
+        }
+    }
+
     if (state.state != SUNRISE_STATE_ACTIVE) {
         check_schedule();
     }

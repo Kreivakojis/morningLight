@@ -19,6 +19,12 @@ typedef enum {
 extern sunrise_state_t sunrise_engine_get_state(void);
 extern void sunrise_engine_cancel(void);
 
+// Forward declarations for time_manager (dark mode check)
+extern bool time_manager_is_synced(void);
+extern int time_manager_get_day_of_week(void);
+extern int time_manager_get_hour(void);
+extern int time_manager_get_minute(void);
+
 // External functions
 extern void color_utils_kelvin_to_rgb(uint16_t kelvin, uint8_t *r, uint8_t *g, uint8_t *b);
 extern void wave_generator_compute(uint8_t *brightness_out, uint16_t led_count,
@@ -138,6 +144,17 @@ esp_err_t animation_engine_start(uint8_t preset_id)
     if (preset_id >= ANIMATION_MAX_PRESETS) {
         ESP_LOGE(TAG, "Invalid preset ID: %d", preset_id);
         return ESP_ERR_INVALID_ARG;
+    }
+
+    // Check dark mode
+    if (time_manager_is_synced()) {
+        int d = time_manager_get_day_of_week();
+        int h = time_manager_get_hour();
+        int m = time_manager_get_minute();
+        if (d >= 0 && config_manager_is_dark_mode_blocking(d, h, m)) {
+            ESP_LOGW(TAG, "Dark mode active, cannot start animation");
+            return ESP_ERR_NOT_ALLOWED;
+        }
     }
 
     // Stop any running sunrise

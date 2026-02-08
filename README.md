@@ -49,8 +49,22 @@ ESP32-based sunrise alarm clock with RGB LED control and web interface.
   - **WS2811 mode**: True spatial wave - each LED has independent brightness based on position
   - **PWM mode**: Temporal wave - all LEDs pulse together over time
   - Organic variation using value noise for natural-looking movement
+  - Amplitude scales with brightness during sunrise ramp (starts subtle, grows with brightness)
   - Web UI controls for real-time parameter adjustment
+  - Logarithmic sliders for speed (0.05-5.0 Hz) and color temperature (2000-6500K)
+  - Coarser slider increments for amplitude, base brightness, and variation (steps of 10)
   - Mutual exclusion with sunrise (animation stops when sunrise starts and vice versa)
+
+- **Dark Mode**
+  - Up to 3 configurable no-light schedules
+  - Per-schedule day-of-week selection
+  - Overnight window support (e.g., 22:00-06:00)
+  - Highest priority: actively cancels running sunrise/animation when dark mode window starts
+  - Blocks alarm triggers, animation starts, and LED test commands
+  - Per-schedule "Allow Override" toggle to permit lights during a window
+  - LED "off" commands always allowed (turning off is fine)
+  - Dark Mode Active banner on Home page when blocking
+  - Settings live in the Alarms page
 
 - **Time Management**
   - NTP synchronization (pool.ntp.org, time.google.com)
@@ -61,6 +75,7 @@ ESP32-based sunrise alarm clock with RGB LED control and web interface.
   - NVS-based persistent storage
   - WiFi credentials
   - Alarm schedules
+  - Dark mode schedules
   - User preferences (brightness, PWM frequency)
 
 - **Button Control**
@@ -124,7 +139,7 @@ ESP32 GND     ---> WS2811 GND
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/status` | GET | Device status (WiFi, time, brightness) |
+| `/api/status` | GET | Device status (WiFi, time, brightness, dark_mode_active) |
 | `/api/wifi/scan` | GET | Scan for WiFi networks |
 | `/api/wifi/connect` | POST | Connect to WiFi network |
 | `/api/config` | GET | Get device configuration |
@@ -137,6 +152,8 @@ ESP32 GND     ---> WS2811 GND
 | `/api/animation/presets` | POST | Update animation preset |
 | `/api/animation/start` | POST | Start animation (preset_id) |
 | `/api/animation/stop` | POST | Stop running animation |
+| `/api/darkmode` | GET | Get all dark mode schedules |
+| `/api/darkmode` | POST | Create/update dark mode schedule |
 
 ## Wave Animation Parameters
 
@@ -211,6 +228,7 @@ Default settings can be modified in `sdkconfig.defaults` or via `idf.py menuconf
 - [x] Addressable LED support (WS2811, WS2812)
 - [x] Wave animation engine with spatial effects
 - [x] Auto turn-off / cool-down after sunrise
+- [x] Dark mode (no-light schedules with active cutoff)
 - [ ] SK6812 RGBW support
 - [ ] Sound/buzzer alarm option
 - [ ] MQTT integration for smart home systems

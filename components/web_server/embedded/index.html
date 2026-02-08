@@ -44,18 +44,19 @@
                         <span id="brightness-display" class="value">0%</span>
                     </div>
                 </div>
+                <div id="dark-mode-banner" class="dark-mode-banner" style="display:none">Dark Mode Active</div>
             </div>
 
             <div class="card">
                 <h2>Quick Test</h2>
                 <div class="form-group">
                     <label>Color Temperature</label>
-                    <input type="range" id="test-color-temp" min="2000" max="6500" value="3000">
-                    <span id="test-color-temp-val">3000K</span>
+                    <input type="range" id="test-color-temp" min="0" max="100" value="50">
+                    <span id="test-color-temp-val">3600K</span>
                 </div>
                 <div class="form-group">
                     <label>Brightness</label>
-                    <input type="range" id="test-brightness" min="0" max="100" value="50">
+                    <input type="range" id="test-brightness" min="0" max="100" step="10" value="50">
                     <span id="test-brightness-val">50%</span>
                 </div>
                 <div class="btn-row">
@@ -71,6 +72,64 @@
                 <h2>Alarms</h2>
                 <div id="alarm-list"></div>
                 <button id="btn-add-alarm" class="btn btn-primary btn-full">Add Alarm</button>
+            </div>
+
+            <!-- Dark Mode Schedules -->
+            <div class="card">
+                <h2>Dark Mode</h2>
+                <p class="hint">No-light windows. Takes priority over all alarms and animations.</p>
+                <div id="darkmode-list"></div>
+                <button id="btn-add-darkmode" class="btn btn-full">Add Schedule</button>
+            </div>
+
+            <!-- Dark Mode Editor Modal -->
+            <div id="darkmode-modal" class="modal">
+                <div class="modal-content">
+                    <h3 id="darkmode-modal-title">Edit Dark Mode</h3>
+                    <form id="darkmode-form">
+                        <input type="hidden" id="darkmode-id">
+                        <div class="form-group">
+                            <label>Start Time</label>
+                            <div class="time-picker">
+                                <input type="number" id="darkmode-start-hour" min="0" max="23" value="22">
+                                <span>:</span>
+                                <input type="number" id="darkmode-start-minute" min="0" max="59" value="0">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>End Time</label>
+                            <div class="time-picker">
+                                <input type="number" id="darkmode-end-hour" min="0" max="23" value="6">
+                                <span>:</span>
+                                <input type="number" id="darkmode-end-minute" min="0" max="59" value="0">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Days</label>
+                            <div class="day-picker" id="darkmode-days">
+                                <label><input type="checkbox" data-day="0"> Su</label>
+                                <label><input type="checkbox" data-day="1" checked> Mo</label>
+                                <label><input type="checkbox" data-day="2" checked> Tu</label>
+                                <label><input type="checkbox" data-day="3" checked> We</label>
+                                <label><input type="checkbox" data-day="4" checked> Th</label>
+                                <label><input type="checkbox" data-day="5" checked> Fr</label>
+                                <label><input type="checkbox" data-day="6"> Sa</label>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="darkmode-override">
+                                Allow Override
+                            </label>
+                            <span class="hint">When checked, lights can still operate during this window</span>
+                        </div>
+                        <div class="btn-row">
+                            <button type="button" id="btn-darkmode-delete" class="btn btn-danger">Delete</button>
+                            <button type="button" id="btn-darkmode-cancel" class="btn">Cancel</button>
+                            <button type="submit" class="btn btn-primary">Save</button>
+                        </div>
+                    </form>
+                </div>
             </div>
 
             <!-- Alarm Editor Modal -->
@@ -159,27 +218,27 @@
                 </div>
                 <div class="form-group">
                     <label>Amplitude</label>
-                    <input type="range" id="anim-amplitude" min="0" max="100" value="50">
+                    <input type="range" id="anim-amplitude" min="0" max="100" step="10" value="50">
                     <span id="anim-amplitude-val">50%</span>
                 </div>
                 <div class="form-group">
                     <label>Speed</label>
-                    <input type="range" id="anim-speed" min="0" max="50" value="5">
-                    <span id="anim-speed-val">0.5 Hz</span>
+                    <input type="range" id="anim-speed" min="0" max="100" value="50">
+                    <span id="anim-speed-val">0.50 Hz</span>
                 </div>
                 <div class="form-group">
                     <label>Base Brightness</label>
-                    <input type="range" id="anim-base" min="0" max="100" value="50">
+                    <input type="range" id="anim-base" min="0" max="100" step="10" value="50">
                     <span id="anim-base-val">50%</span>
                 </div>
                 <div class="form-group">
                     <label>Variation</label>
-                    <input type="range" id="anim-variation" min="0" max="100" value="20">
+                    <input type="range" id="anim-variation" min="0" max="100" step="10" value="20">
                     <span id="anim-variation-val">20%</span>
                 </div>
                 <div class="form-group">
                     <label>Color Temperature</label>
-                    <input type="range" id="anim-color-temp" min="2000" max="6500" value="3000">
+                    <input type="range" id="anim-color-temp" min="0" max="100" value="50">
                     <span id="anim-color-temp-val">3000K</span>
                 </div>
                 <div class="btn-row">
