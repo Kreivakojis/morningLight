@@ -90,6 +90,14 @@ static void set_defaults(void)
         config.animation_presets[i].variation = 0;
         config.animation_presets[i].color_temp = 3500;
     }
+
+    // MQTT defaults
+    config.mqtt.enabled = false;
+    config.mqtt.broker_uri[0] = '\0';
+    config.mqtt.username[0] = '\0';
+    config.mqtt.password[0] = '\0';
+    strncpy(config.mqtt.topic_prefix, "morninglight", sizeof(config.mqtt.topic_prefix) - 1);
+    strncpy(config.mqtt.device_name, "MorningLight", sizeof(config.mqtt.device_name) - 1);
 }
 
 esp_err_t config_manager_init(void)
@@ -108,16 +116,21 @@ esp_err_t config_manager_init(void)
     esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle);
 
     if (err == ESP_OK) {
-        size_t required_size = sizeof(device_config_t);
-        err = nvs_get_blob(handle, NVS_KEY_CONFIG, &config, &required_size);
-
-        if (err == ESP_OK) {
-            ESP_LOGI(TAG, "Loaded config from NVS (size=%d)", required_size);
-            ESP_LOGI(TAG, "Config values: led_type=%d, led_count=%d, pwm_freq=%lu",
-                     config.led_type, config.led_count, config.pwm_frequency);
+        size_t stored_size = 0;
+        err = nvs_get_blob(handle, NVS_KEY_CONFIG, NULL, &stored_size);
+        if (err == ESP_OK && stored_size > 0) {
+            size_t read_size = stored_size < sizeof(device_config_t) ? stored_size : sizeof(device_config_t);
+            err = nvs_get_blob(handle, NVS_KEY_CONFIG, &config, &read_size);
+            if (err == ESP_OK) {
+                ESP_LOGI(TAG, "Loaded config from NVS (stored=%d, struct=%d)", stored_size, sizeof(device_config_t));
+                ESP_LOGI(TAG, "Config values: led_type=%d, led_count=%d, pwm_freq=%lu",
+                         config.led_type, config.led_count, config.pwm_frequency);
+            } else {
+                ESP_LOGW(TAG, "Failed to read config: %s, using defaults", esp_err_to_name(err));
+                set_defaults();
+            }
         } else {
-            ESP_LOGW(TAG, "Failed to read config: %s, using defaults", esp_err_to_name(err));
-            set_defaults();
+            ESP_LOGW(TAG, "No config blob in NVS, using defaults");
         }
 
         nvs_close(handle);

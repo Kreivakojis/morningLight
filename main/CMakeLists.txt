@@ -13,6 +13,7 @@ idf_component_register(
         animation_engine
         button_handler
         temperature_manager
+        mqtt_manager
         esp_event
         nvs_flash
 )

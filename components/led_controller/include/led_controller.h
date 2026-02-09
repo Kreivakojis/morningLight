@@ -54,6 +54,15 @@ void led_controller_set_brightness(uint8_t brightness);
 uint8_t led_controller_get_brightness(void);
 
 /**
+ * @brief Get current RGB values
+ *
+ * @param r Output red component (0-255)
+ * @param g Output green component (0-255)
+ * @param b Output blue component (0-255)
+ */
+void led_controller_get_rgb(uint8_t *r, uint8_t *g, uint8_t *b);
+
+/**
  * @brief Set color from HSV values
  *
  * @param h Hue (0-360)

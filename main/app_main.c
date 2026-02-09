@@ -18,6 +18,7 @@
 #include "animation_engine.h"
 #include "button_handler.h"
 #include "temperature_manager.h"
+#include "mqtt_manager.h"
 
 static const char *TAG = "app_main";
 
@@ -47,6 +48,7 @@ static void app_event_handler(void *arg, esp_event_base_t event_base,
             case APP_EVENT_WIFI_GOT_IP:
                 ESP_LOGI(TAG, "Got IP address");
                 time_manager_start_sync();
+                mqtt_manager_start();
                 break;
 
             case APP_EVENT_TIME_SYNCED:
@@ -134,6 +136,9 @@ void app_main(void)
 
     // Initialize WiFi - this will start AP or STA mode based on config
     ESP_ERROR_CHECK(wifi_manager_init());
+
+    // Initialize MQTT (auto-starts when WiFi connects)
+    ESP_ERROR_CHECK(mqtt_manager_init());
 
     // Start web server
     ESP_ERROR_CHECK(web_server_start());

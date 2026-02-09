@@ -18,6 +18,7 @@
 #include "animation_engine.h"
 #include "dns_server.h"
 #include "temperature_manager.h"
+#include "mqtt_manager.h"
 
 static const char *TAG = "web_server";
 
@@ -147,6 +148,9 @@ static esp_err_t api_status_handler(httpd_req_t *req)
         if (d >= 0) dm_active = config_manager_is_dark_mode_blocking(d, h, m);
     }
     cJSON_AddBoolToObject(json, "dark_mode_active", dm_active);
+
+    // MQTT status
+    cJSON_AddBoolToObject(json, "mqtt_connected", mqtt_manager_is_connected());
 
     // Config status
     device_config_t *config = config_manager_get();
@@ -894,6 +898,14 @@ static esp_err_t api_config_export_handler(httpd_req_t *req)
         cJSON_AddItemToArray(dark, item);
     }
 
+    // MQTT settings (exclude password for security)
+    cJSON *mqtt = cJSON_AddObjectToObject(json, "mqtt");
+    cJSON_AddBoolToObject(mqtt, "enabled", config->mqtt.enabled);
+    cJSON_AddStringToObject(mqtt, "broker_uri", config->mqtt.broker_uri);
+    cJSON_AddStringToObject(mqtt, "username", config->mqtt.username);
+    cJSON_AddStringToObject(mqtt, "topic_prefix", config->mqtt.topic_prefix);
+    cJSON_AddStringToObject(mqtt, "device_name", config->mqtt.device_name);
+
     char *printed = cJSON_Print(json);
     cJSON_Delete(json);
 
@@ -1107,13 +1119,129 @@ static esp_err_t api_config_import_handler(httpd_req_t *req)
         }
     }
 
+    // MQTT — if present, import settings (password not included in export)
+    cJSON *mqtt_obj = cJSON_GetObjectItem(json, "mqtt");
+    if (cJSON_IsObject(mqtt_obj)) {
+        cJSON *v;
+        v = cJSON_GetObjectItem(mqtt_obj, "enabled");
+        if (cJSON_IsBool(v)) config->mqtt.enabled = cJSON_IsTrue(v);
+
+        v = cJSON_GetObjectItem(mqtt_obj, "broker_uri");
+        if (cJSON_IsString(v)) {
+            strncpy(config->mqtt.broker_uri, v->valuestring, sizeof(config->mqtt.broker_uri) - 1);
+            config->mqtt.broker_uri[sizeof(config->mqtt.broker_uri) - 1] = '\0';
+        }
+
+        v = cJSON_GetObjectItem(mqtt_obj, "username");
+        if (cJSON_IsString(v)) {
+            strncpy(config->mqtt.username, v->valuestring, sizeof(config->mqtt.username) - 1);
+            config->mqtt.username[sizeof(config->mqtt.username) - 1] = '\0';
+        }
+
+        v = cJSON_GetObjectItem(mqtt_obj, "topic_prefix");
+        if (cJSON_IsString(v) && strlen(v->valuestring) > 0) {
+            strncpy(config->mqtt.topic_prefix, v->valuestring, sizeof(config->mqtt.topic_prefix) - 1);
+            config->mqtt.topic_prefix[sizeof(config->mqtt.topic_prefix) - 1] = '\0';
+        }
+
+        v = cJSON_GetObjectItem(mqtt_obj, "device_name");
+        if (cJSON_IsString(v) && strlen(v->valuestring) > 0) {
+            strncpy(config->mqtt.device_name, v->valuestring, sizeof(config->mqtt.device_name) - 1);
+            config->mqtt.device_name[sizeof(config->mqtt.device_name) - 1] = '\0';
+        }
+    }
+
     config_manager_save();
     sunrise_engine_update_schedule();
+
+    // Restart MQTT if config changed
+    if (config->mqtt.enabled) {
+        mqtt_manager_start();
+    } else {
+        mqtt_manager_stop();
+    }
+
     cJSON_Delete(json);
 
     cJSON *resp = cJSON_CreateObject();
     cJSON_AddBoolToObject(resp, "success", true);
     cJSON_AddBoolToObject(resp, "restart_required", restart_required);
+    return send_json_response(req, resp);
+}
+
+// GET /api/mqtt
+static esp_err_t api_mqtt_get_handler(httpd_req_t *req)
+{
+    device_config_t *config = config_manager_get();
+    cJSON *json = cJSON_CreateObject();
+
+    cJSON_AddBoolToObject(json, "enabled", config->mqtt.enabled);
+    cJSON_AddStringToObject(json, "broker_uri", config->mqtt.broker_uri);
+    cJSON_AddStringToObject(json, "username", config->mqtt.username);
+    cJSON_AddBoolToObject(json, "password_set", config->mqtt.password[0] != '\0');
+    cJSON_AddStringToObject(json, "topic_prefix", config->mqtt.topic_prefix);
+    cJSON_AddStringToObject(json, "device_name", config->mqtt.device_name);
+    cJSON_AddBoolToObject(json, "connected", mqtt_manager_is_connected());
+
+    return send_json_response(req, json);
+}
+
+// POST /api/mqtt
+static esp_err_t api_mqtt_post_handler(httpd_req_t *req)
+{
+    cJSON *json = parse_json_body(req);
+    if (json == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    device_config_t *config = config_manager_get();
+
+    cJSON *enabled = cJSON_GetObjectItem(json, "enabled");
+    if (cJSON_IsBool(enabled)) config->mqtt.enabled = cJSON_IsTrue(enabled);
+
+    cJSON *broker = cJSON_GetObjectItem(json, "broker_uri");
+    if (cJSON_IsString(broker)) {
+        strncpy(config->mqtt.broker_uri, broker->valuestring, sizeof(config->mqtt.broker_uri) - 1);
+        config->mqtt.broker_uri[sizeof(config->mqtt.broker_uri) - 1] = '\0';
+    }
+
+    cJSON *username = cJSON_GetObjectItem(json, "username");
+    if (cJSON_IsString(username)) {
+        strncpy(config->mqtt.username, username->valuestring, sizeof(config->mqtt.username) - 1);
+        config->mqtt.username[sizeof(config->mqtt.username) - 1] = '\0';
+    }
+
+    cJSON *password = cJSON_GetObjectItem(json, "password");
+    if (cJSON_IsString(password) && strlen(password->valuestring) > 0) {
+        strncpy(config->mqtt.password, password->valuestring, sizeof(config->mqtt.password) - 1);
+        config->mqtt.password[sizeof(config->mqtt.password) - 1] = '\0';
+    }
+
+    cJSON *prefix = cJSON_GetObjectItem(json, "topic_prefix");
+    if (cJSON_IsString(prefix) && strlen(prefix->valuestring) > 0) {
+        strncpy(config->mqtt.topic_prefix, prefix->valuestring, sizeof(config->mqtt.topic_prefix) - 1);
+        config->mqtt.topic_prefix[sizeof(config->mqtt.topic_prefix) - 1] = '\0';
+    }
+
+    cJSON *name = cJSON_GetObjectItem(json, "device_name");
+    if (cJSON_IsString(name) && strlen(name->valuestring) > 0) {
+        strncpy(config->mqtt.device_name, name->valuestring, sizeof(config->mqtt.device_name) - 1);
+        config->mqtt.device_name[sizeof(config->mqtt.device_name) - 1] = '\0';
+    }
+
+    config_manager_save();
+    cJSON_Delete(json);
+
+    // Start or stop MQTT based on new config
+    if (config->mqtt.enabled) {
+        mqtt_manager_start();
+    } else {
+        mqtt_manager_stop();
+    }
+
+    cJSON *resp = cJSON_CreateObject();
+    cJSON_AddBoolToObject(resp, "success", true);
     return send_json_response(req, resp);
 }
 
@@ -1167,7 +1295,7 @@ esp_err_t web_server_start(void)
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.uri_match_fn = httpd_uri_match_wildcard;
-    config.max_uri_handlers = 24;
+    config.max_uri_handlers = 26;
     config.lru_purge_enable = true;
     config.max_open_sockets = 7;  // Reduced to avoid socket exhaustion
 
@@ -1203,6 +1331,10 @@ esp_err_t web_server_start(void)
     httpd_uri_t api_darkmode_get = { .uri = "/api/darkmode", .method = HTTP_GET, .handler = api_darkmode_get_handler };
     httpd_uri_t api_darkmode_post = { .uri = "/api/darkmode", .method = HTTP_POST, .handler = api_darkmode_post_handler };
 
+    // MQTT endpoints
+    httpd_uri_t api_mqtt_get = { .uri = "/api/mqtt", .method = HTTP_GET, .handler = api_mqtt_get_handler };
+    httpd_uri_t api_mqtt_post = { .uri = "/api/mqtt", .method = HTTP_POST, .handler = api_mqtt_post_handler };
+
     // Config export/import and reboot
     httpd_uri_t api_config_export = { .uri = "/api/config/export", .method = HTTP_GET, .handler = api_config_export_handler };
     httpd_uri_t api_config_import = { .uri = "/api/config/import", .method = HTTP_POST, .handler = api_config_import_handler };
@@ -1230,6 +1362,8 @@ esp_err_t web_server_start(void)
     httpd_register_uri_handler(server, &api_anim_stop);
     httpd_register_uri_handler(server, &api_darkmode_get);
     httpd_register_uri_handler(server, &api_darkmode_post);
+    httpd_register_uri_handler(server, &api_mqtt_get);
+    httpd_register_uri_handler(server, &api_mqtt_post);
     httpd_register_uri_handler(server, &api_config_export);
     httpd_register_uri_handler(server, &api_config_import);
     httpd_register_uri_handler(server, &api_factory_reset);

@@ -167,6 +167,13 @@ uint8_t led_controller_get_brightness(void)
     return led_state.brightness;
 }
 
+void led_controller_get_rgb(uint8_t *r, uint8_t *g, uint8_t *b)
+{
+    if (r) *r = led_state.r;
+    if (g) *g = led_state.g;
+    if (b) *b = led_state.b;
+}
+
 void led_controller_set_hsv(uint16_t h, uint8_t s, uint8_t v)
 {
     uint8_t r, g, b;

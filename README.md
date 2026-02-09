@@ -88,6 +88,19 @@ ESP32-based sunrise alarm clock with RGB LED control and web interface.
   - Exposed via `/api/status` (null when sensor not connected)
   - Non-fatal: device operates normally without sensors attached
 
+- **MQTT + Home Assistant Integration**
+  - MQTT client with configurable broker, username/password
+  - Home Assistant auto-discovery (light, sensors, switch, select)
+  - Light entity: on/off, brightness, color temperature, RGB
+  - Temperature sensors: internal NTC + 2 external DS18B20
+  - Sunrise switch: start/stop sunrise simulation
+  - Sunrise progress sensor (0-100%)
+  - Animation select: choose from configured presets
+  - LWT (Last Will and Testament) for availability tracking
+  - Automatic re-discovery on HA restart
+  - Periodic state publishing (30s interval)
+  - MQTT settings configurable via web UI
+
 - **Button Control**
   - Reset button (GPIO 0) - factory reset on long press
   - Scenario button (GPIO 4) - manual light control
@@ -171,6 +184,8 @@ ESP32 GND     ---> WS2811 GND
 | `/api/reboot` | POST | Reboot device |
 | `/api/config/export` | GET | Export configuration as JSON file |
 | `/api/config/import` | POST | Import configuration from JSON file |
+| `/api/mqtt` | GET | Get MQTT configuration and connection status |
+| `/api/mqtt` | POST | Update MQTT configuration |
 
 ## Wave Animation Parameters
 
@@ -252,8 +267,8 @@ Default settings can be modified in `sdkconfig.defaults` or via `idf.py menuconf
 - [x] Dark mode (no-light schedules with active cutoff)
 - [ ] SK6812 RGBW support
 - [ ] Sound/buzzer alarm option
-- [ ] MQTT integration for smart home systems
-- [ ] Home Assistant auto-discovery
+- [x] MQTT integration for smart home systems
+- [x] Home Assistant auto-discovery
 - [ ] OTA firmware updates
 - [ ] Sleep tracking integration
 - [x] Temperature monitoring (NTC + DS18B20)

@@ -690,6 +690,58 @@ $('#darkmode-form').addEventListener('submit', async (e) => {
     loadDarkMode();
 });
 
+// MQTT
+async function loadMqtt() {
+    try {
+        const data = await api.get('/api/mqtt');
+        $('#mqtt-enabled').checked = data.enabled;
+        $('#mqtt-broker').value = data.broker_uri || '';
+        $('#mqtt-username').value = data.username || '';
+        $('#mqtt-password').value = '';
+        $('#mqtt-password').placeholder = data.password_set ? 'Leave blank to keep current' : 'Optional';
+        $('#mqtt-prefix').value = data.topic_prefix || 'morninglight';
+        $('#mqtt-device-name').value = data.device_name || 'MorningLight';
+        $('#mqtt-settings').style.display = data.enabled ? 'block' : 'none';
+
+        const statusEl = $('#mqtt-status');
+        if (data.connected) {
+            statusEl.textContent = 'Connected';
+            statusEl.style.color = '#4caf50';
+        } else if (data.enabled) {
+            statusEl.textContent = 'Disconnected';
+            statusEl.style.color = '#f44336';
+        } else {
+            statusEl.textContent = 'Disabled';
+            statusEl.style.color = '';
+        }
+    } catch (e) {
+        console.error('Failed to load MQTT config:', e);
+    }
+}
+
+$('#mqtt-enabled').addEventListener('change', (e) => {
+    $('#mqtt-settings').style.display = e.target.checked ? 'block' : 'none';
+});
+
+$('#btn-save-mqtt').addEventListener('click', async () => {
+    const data = {
+        enabled: $('#mqtt-enabled').checked,
+        broker_uri: $('#mqtt-broker').value,
+        username: $('#mqtt-username').value,
+        topic_prefix: $('#mqtt-prefix').value,
+        device_name: $('#mqtt-device-name').value
+    };
+    const pw = $('#mqtt-password').value;
+    if (pw.length > 0) {
+        data.password = pw;
+    }
+    const result = await api.post('/api/mqtt', data);
+    if (result.success) {
+        alert('MQTT settings saved');
+        setTimeout(loadMqtt, 2000);
+    }
+});
+
 // Config export
 $('#btn-export-config').addEventListener('click', () => {
     window.location.href = '/api/config/export';
@@ -750,6 +802,7 @@ loadAlarms();
 loadDarkMode();
 loadConfig();
 loadAnimationPresets();
+loadMqtt();
 
 // Poll status every 5 seconds
 setInterval(updateStatus, 5000);

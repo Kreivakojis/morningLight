@@ -352,6 +352,44 @@
                 <button id="btn-save-settings" class="btn btn-primary btn-full">Save Settings</button>
             </div>
 
+            <!-- MQTT Settings -->
+            <div class="card">
+                <h2>MQTT</h2>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="mqtt-enabled">
+                        Enable MQTT
+                    </label>
+                </div>
+                <div id="mqtt-settings" style="display:none">
+                    <div class="form-group">
+                        <label>Broker URI</label>
+                        <input type="text" id="mqtt-broker" placeholder="mqtt://192.168.1.100:1883">
+                    </div>
+                    <div class="form-group">
+                        <label>Username (optional)</label>
+                        <input type="text" id="mqtt-username" placeholder="">
+                    </div>
+                    <div class="form-group">
+                        <label>Password (optional)</label>
+                        <input type="password" id="mqtt-password" placeholder="Leave blank to keep current">
+                    </div>
+                    <div class="form-group">
+                        <label>Topic Prefix</label>
+                        <input type="text" id="mqtt-prefix" placeholder="morninglight" maxlength="31">
+                    </div>
+                    <div class="form-group">
+                        <label>Device Name (HA display)</label>
+                        <input type="text" id="mqtt-device-name" placeholder="MorningLight" maxlength="31">
+                    </div>
+                    <div class="status-item" style="margin-top:10px">
+                        <span class="label">Status:</span>
+                        <span id="mqtt-status" class="value">--</span>
+                    </div>
+                </div>
+                <button id="btn-save-mqtt" class="btn btn-primary btn-full" style="margin-top:10px">Save MQTT</button>
+            </div>
+
             <!-- Configuration Export/Import -->
             <div class="card">
                 <h2>Configuration</h2>

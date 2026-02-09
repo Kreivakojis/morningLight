@@ -57,6 +57,18 @@ typedef struct {
 } dark_mode_schedule_t;
 
 /**
+ * @brief MQTT configuration
+ */
+typedef struct {
+    bool enabled;
+    char broker_uri[128];   // "mqtt://192.168.1.100:1883"
+    char username[33];
+    char password[65];
+    char topic_prefix[32];  // default "morninglight"
+    char device_name[32];   // default "MorningLight" (for HA display)
+} mqtt_config_t;
+
+/**
  * @brief Device configuration structure
  */
 typedef struct {
@@ -75,6 +87,9 @@ typedef struct {
 
     // Dark mode schedules (added at end for NVS compatibility)
     dark_mode_schedule_t dark_schedules[DARK_MODE_MAX_SCHEDULES];
+
+    // MQTT configuration (added at end for NVS compatibility)
+    mqtt_config_t mqtt;
 } device_config_t;
 
 /**
