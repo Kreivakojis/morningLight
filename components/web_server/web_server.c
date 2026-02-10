@@ -55,6 +55,18 @@ static esp_err_t send_json_response(httpd_req_t *req, cJSON *json)
     return ESP_OK;
 }
 
+// Helper to send JSON error response (instead of HTML from httpd_resp_send_err)
+static esp_err_t send_json_error(httpd_req_t *req, const char *status, const char *message)
+{
+    httpd_resp_set_status(req, status);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    char buf[256];
+    snprintf(buf, sizeof(buf), "{\"success\":false,\"error\":\"%s\"}", message);
+    httpd_resp_sendstr(req, buf);
+    return ESP_FAIL;
+}
+
 // Helper to parse JSON from request
 static cJSON *parse_json_body(httpd_req_t *req)
 {
@@ -925,21 +937,22 @@ static esp_err_t api_config_import_handler(httpd_req_t *req)
 {
     int content_len = req->content_len;
     if (content_len <= 0 || content_len > 8192) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Body too large or empty");
-        return ESP_FAIL;
+        return send_json_error(req, HTTPD_400, "Body too large or empty");
     }
 
     char *buf = malloc(content_len + 1);
     if (buf == NULL) {
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
-        return ESP_FAIL;
+        return send_json_error(req, HTTPD_500, "Out of memory");
     }
 
-    int received = httpd_req_recv(req, buf, content_len);
-    if (received != content_len) {
-        free(buf);
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Incomplete body");
-        return ESP_FAIL;
+    int received = 0;
+    while (received < content_len) {
+        int ret = httpd_req_recv(req, buf + received, content_len - received);
+        if (ret <= 0) {
+            free(buf);
+            return send_json_error(req, HTTPD_400, "Incomplete body");
+        }
+        received += ret;
     }
     buf[content_len] = '\0';
 
@@ -947,15 +960,13 @@ static esp_err_t api_config_import_handler(httpd_req_t *req)
     char *json_start = strchr(buf, '{');
     if (json_start == NULL) {
         free(buf);
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "No JSON object found");
-        return ESP_FAIL;
+        return send_json_error(req, HTTPD_400, "No JSON object found");
     }
 
     cJSON *json = cJSON_Parse(json_start);
     free(buf);
     if (json == NULL) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
-        return ESP_FAIL;
+        return send_json_error(req, HTTPD_400, "Invalid JSON");
     }
 
     device_config_t *config = config_manager_get();

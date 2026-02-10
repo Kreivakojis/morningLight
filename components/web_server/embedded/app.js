@@ -769,6 +769,8 @@ $('#file-import-config').addEventListener('change', async (e) => {
                 alert('Config imported successfully');
                 loadConfig(); loadAlarms(); loadDarkMode(); loadAnimationPresets();
             }
+        } else {
+            alert('Import failed: ' + (result.error || 'Unknown error'));
         }
     } catch (err) { alert('Import failed: ' + err.message); }
     e.target.value = '';
