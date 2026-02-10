@@ -25,6 +25,34 @@ let darkModeSchedules = [];
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 
+// Time input constraints — enforce valid digits as you type
+function constrainTimeInput(el, max) {
+    el.addEventListener('input', function() {
+        let v = this.value.replace(/\D/g, '');
+        if (v.length > 2) v = v.slice(0, 2);
+        if (v.length === 1) {
+            const d = parseInt(v);
+            if (max === 23 && d > 2) v = '0' + v;
+            if (max === 59 && d > 5) v = '0' + v;
+        }
+        if (v.length === 2) {
+            if (parseInt(v) > max) v = String(max);
+        }
+        this.value = v;
+    });
+    el.addEventListener('blur', function() {
+        let n = parseInt(this.value) || 0;
+        if (n > max) n = max;
+        this.value = n;
+    });
+}
+
+// Apply to all hour/minute fields
+['#alarm-hour', '#darkmode-start-hour', '#darkmode-end-hour'].forEach(
+    s => constrainTimeInput($(s), 23));
+['#alarm-minute', '#darkmode-start-minute', '#darkmode-end-minute'].forEach(
+    s => constrainTimeInput($(s), 59));
+
 // Navigation
 $$('.nav-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -158,6 +186,7 @@ function editAlarm(id) {
 
     $('#alarm-modal-title').textContent = alarm ? 'Edit Alarm' : 'New Alarm';
     $('#alarm-id').value = alarm ? alarm.id : -1;
+    $('#btn-alarm-delete').style.display = alarm ? '' : 'none';
     $('#alarm-name').value = alarm ? (alarm.name || '') : '';
     $('#alarm-hour').value = alarm ? alarm.hour : 7;
     $('#alarm-minute').value = alarm ? alarm.minute : 0;
@@ -206,6 +235,20 @@ $('#btn-add-alarm').addEventListener('click', () => editAlarm(-1));
 
 $('#btn-alarm-cancel').addEventListener('click', () => {
     $('#alarm-modal').classList.remove('show');
+});
+
+$('#btn-alarm-delete').addEventListener('click', async () => {
+    const id = parseInt($('#alarm-id').value);
+    if (id >= 0 && confirm('Delete this alarm?')) {
+        await api.post('/api/alarms', {
+            id, enabled: false, hour: 0, minute: 0,
+            duration_min: 0, days_mask: 0, color_temp: 3000,
+            color_temp_start: 0, brightness: 100, brightness_curve: 0,
+            animation_preset: -1, cooldown_min: 0, name: ''
+        });
+        $('#alarm-modal').classList.remove('show');
+        loadAlarms();
+    }
 });
 
 function timeInWindow(t, start, end) {
