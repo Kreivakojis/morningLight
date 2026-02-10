@@ -98,6 +98,15 @@ static void set_defaults(void)
     config.mqtt.password[0] = '\0';
     strncpy(config.mqtt.topic_prefix, "morninglight", sizeof(config.mqtt.topic_prefix) - 1);
     strncpy(config.mqtt.device_name, "MorningLight", sizeof(config.mqtt.device_name) - 1);
+
+    // Per-alarm brightness curve and color temp range defaults
+    for (int i = 0; i < 8; i++) {
+        config.alarm_curves[i] = 0;            // logarithmic
+        config.alarm_color_temp_start[i] = 0;  // 0 = no ramp (same as end temp)
+    }
+
+    // Per-alarm display names
+    memset(config.alarm_names, 0, sizeof(config.alarm_names));
 }
 
 esp_err_t config_manager_init(void)

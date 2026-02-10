@@ -38,6 +38,11 @@ float sunrise_curve_apply(sunrise_curve_t curve, float t)
                 return (expf(3.0f * t) - 1.0f) / (e3 - 1.0f);
             }
 
+        case SUNRISE_CURVE_INVERSE_LOG:
+            // y = 1 - log10(10 - 9*t)
+            // Fast initial ramp, slows at end (inverse of logarithmic)
+            return 1.0f - log10f(10.0f - 9.0f * t);
+
         default:
             return t;
     }
@@ -56,6 +61,7 @@ const char *sunrise_curve_get_name(sunrise_curve_t curve)
         case SUNRISE_CURVE_LOGARITHMIC: return "logarithmic";
         case SUNRISE_CURVE_SIGMOID:     return "sigmoid";
         case SUNRISE_CURVE_EXPONENTIAL: return "exponential";
+        case SUNRISE_CURVE_INVERSE_LOG: return "inverse logarithmic";
         default:                        return "unknown";
     }
 }

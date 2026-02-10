@@ -29,6 +29,7 @@ typedef enum {
     SUNRISE_CURVE_LOGARITHMIC,  // Log curve (most natural)
     SUNRISE_CURVE_SIGMOID,      // S-curve
     SUNRISE_CURVE_EXPONENTIAL,  // Exponential
+    SUNRISE_CURVE_INVERSE_LOG,  // Fast start, slow end
 } sunrise_curve_t;
 
 /**
@@ -77,13 +78,16 @@ int sunrise_engine_get_active_alarm(void);
  * @brief Start sunrise manually (for testing)
  *
  * @param duration_min Duration in minutes
- * @param color_temp Color temperature in Kelvin
+ * @param color_temp_start Starting color temperature in Kelvin
+ * @param color_temp_end Ending color temperature in Kelvin
  * @param brightness Max brightness percentage
  * @param animation_preset Animation preset index (-1 for classic, 0-4 for preset)
+ * @param curve Brightness curve type
  * @return ESP_OK on success
  */
-esp_err_t sunrise_engine_start_manual(uint8_t duration_min, uint16_t color_temp,
-                                       uint8_t brightness, int8_t animation_preset);
+esp_err_t sunrise_engine_start_manual(uint8_t duration_min, uint16_t color_temp_start,
+                                       uint16_t color_temp_end, uint8_t brightness,
+                                       int8_t animation_preset, sunrise_curve_t curve);
 
 /**
  * @brief Cancel active sunrise

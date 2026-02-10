@@ -151,8 +151,12 @@
                     <form id="alarm-form">
                         <input type="hidden" id="alarm-id">
                         <div class="form-group">
+                            <label>Name (optional)</label>
+                            <input type="text" id="alarm-name" maxlength="15" placeholder="e.g. Weekday">
+                        </div>
+                        <div class="form-group">
                             <label>Time</label>
-                            <div class="time-picker">
+                            <div class="time-picker time-picker-large">
                                 <input type="number" id="alarm-hour" min="0" max="23" value="7">
                                 <span>:</span>
                                 <input type="number" id="alarm-minute" min="0" max="59" value="0">
@@ -176,9 +180,28 @@
                             </div>
                         </div>
                         <div class="form-group">
-                            <label>Color Temperature</label>
-                            <input type="range" id="alarm-color-temp" min="2000" max="6500" value="3000">
-                            <span id="alarm-color-temp-val">3000K</span>
+                            <label>Color Temperature (K)</label>
+                            <div class="color-temp-row">
+                                <div>
+                                    <span class="hint">Start</span>
+                                    <input type="number" id="alarm-color-start" min="2000" max="6500" step="100" value="2000">
+                                </div>
+                                <span class="color-temp-arrow">&rarr;</span>
+                                <div>
+                                    <span class="hint">End</span>
+                                    <input type="number" id="alarm-color-end" min="2000" max="6500" step="100" value="3000">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Brightness Curve</label>
+                            <select id="alarm-brightness-curve">
+                                <option value="0">Logarithmic</option>
+                                <option value="1">Inverse Logarithmic</option>
+                                <option value="2">Linear</option>
+                                <option value="3">Sigmoid</option>
+                                <option value="4">Exponential</option>
+                            </select>
                         </div>
                         <div class="form-group">
                             <label>Max Brightness</label>

@@ -423,7 +423,7 @@ static void handle_light_command(const char *data, int data_len)
 static void handle_sunrise_command(const char *data, int data_len)
 {
     if (data_len >= 2 && strncmp(data, "ON", 2) == 0) {
-        sunrise_engine_start_manual(30, 3000, 100, -1);
+        sunrise_engine_start_manual(30, 2000, 3000, 100, -1, SUNRISE_CURVE_LOGARITHMIC);
     } else if (data_len >= 3 && strncmp(data, "OFF", 3) == 0) {
         sunrise_engine_cancel();
     }

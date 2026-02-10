@@ -90,6 +90,13 @@ typedef struct {
 
     // MQTT configuration (added at end for NVS compatibility)
     mqtt_config_t mqtt;
+
+    // Per-alarm brightness curve and color temp range (added at end for NVS compat)
+    uint8_t alarm_curves[8];            // 0=logarithmic(default), 1=inverse_log, 2=linear, 3=sigmoid, 4=exponential
+    uint16_t alarm_color_temp_start[8]; // Starting color temp in K, 0 = same as alarm's color_temp (no ramp)
+
+    // Per-alarm display names (added at end for NVS compat)
+    char alarm_names[8][16];            // Optional display name, empty string = unnamed
 } device_config_t;
 
 /**

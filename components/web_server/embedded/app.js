@@ -116,11 +116,13 @@ function renderAlarms() {
     list.innerHTML = alarms.map(a => {
         const time = `${String(a.hour).padStart(2, '0')}:${String(a.minute).padStart(2, '0')}`;
         const activeDays = days.filter((_, i) => a.days_mask & (1 << i)).join(' ');
+        const name = a.name ? `<div class="alarm-name">${a.name}</div>` : '';
 
         return `
             <div class="alarm-item" data-id="${a.id}">
                 <div class="alarm-time">${time}</div>
                 <div class="alarm-info">
+                    ${name}
                     <div class="alarm-days">${activeDays || 'No days'}</div>
                 </div>
                 <div class="alarm-toggle ${a.enabled ? 'active' : ''}" data-id="${a.id}"></div>
@@ -156,12 +158,20 @@ function editAlarm(id) {
 
     $('#alarm-modal-title').textContent = alarm ? 'Edit Alarm' : 'New Alarm';
     $('#alarm-id').value = alarm ? alarm.id : -1;
+    $('#alarm-name').value = alarm ? (alarm.name || '') : '';
     $('#alarm-hour').value = alarm ? alarm.hour : 7;
     $('#alarm-minute').value = alarm ? alarm.minute : 0;
     $('#alarm-duration').value = alarm ? alarm.duration_min : 30;
     $('#alarm-duration-val').textContent = `${alarm ? alarm.duration_min : 30} min`;
-    $('#alarm-color-temp').value = alarm ? alarm.color_temp : 3000;
-    $('#alarm-color-temp-val').textContent = `${alarm ? alarm.color_temp : 3000}K`;
+    // Color temp range
+    const ctStart = alarm ? (alarm.color_temp_start || alarm.color_temp) : 2000;
+    const ctEnd = alarm ? alarm.color_temp : 3000;
+    $('#alarm-color-start').value = ctStart;
+    $('#alarm-color-end').value = ctEnd;
+
+    // Brightness curve
+    $('#alarm-brightness-curve').value = alarm ? (alarm.brightness_curve || 0) : 0;
+
     $('#alarm-brightness').value = alarm ? alarm.brightness : 100;
     $('#alarm-brightness-val').textContent = `${alarm ? alarm.brightness : 100}%`;
 
@@ -244,10 +254,13 @@ $('#alarm-form').addEventListener('submit', async (e) => {
         minute: parseInt($('#alarm-minute').value),
         duration_min: parseInt($('#alarm-duration').value),
         days_mask: daysMask,
-        color_temp: parseInt($('#alarm-color-temp').value),
+        color_temp: parseInt($('#alarm-color-end').value),
+        color_temp_start: parseInt($('#alarm-color-start').value),
         brightness: parseInt($('#alarm-brightness').value),
+        brightness_curve: parseInt($('#alarm-brightness-curve').value),
         animation_preset: parseInt($('#alarm-animation-preset').value),
-        cooldown_min: parseInt($('#alarm-cooldown').value)
+        cooldown_min: parseInt($('#alarm-cooldown').value),
+        name: $('#alarm-name').value
     };
 
     if (alarm.id < 0) delete alarm.id;
@@ -273,8 +286,21 @@ $('#alarm-duration').addEventListener('input', (e) => {
     $('#alarm-duration-val').textContent = `${e.target.value} min`;
 });
 
-$('#alarm-color-temp').addEventListener('input', (e) => {
-    $('#alarm-color-temp-val').textContent = `${e.target.value}K`;
+$('#alarm-color-start').addEventListener('change', function() {
+    let s = parseInt(this.value) || 2000;
+    if (s < 2000) s = 2000;
+    if (s > 6500) s = 6500;
+    this.value = s;
+    const e = parseInt($('#alarm-color-end').value);
+    if (s > e) $('#alarm-color-end').value = s;
+});
+$('#alarm-color-end').addEventListener('change', function() {
+    let e = parseInt(this.value) || 3000;
+    if (e < 2000) e = 2000;
+    if (e > 6500) e = 6500;
+    this.value = e;
+    const s = parseInt($('#alarm-color-start').value);
+    if (e < s) $('#alarm-color-start').value = e;
 });
 
 $('#alarm-brightness').addEventListener('input', (e) => {

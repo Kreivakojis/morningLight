@@ -377,6 +377,9 @@ static esp_err_t api_alarms_get_handler(httpd_req_t *req)
         cJSON_AddNumberToObject(a, "brightness", alarm->brightness);
         cJSON_AddNumberToObject(a, "animation_preset", alarm->animation_preset);
         cJSON_AddNumberToObject(a, "cooldown_min", alarm->cooldown_min);
+        cJSON_AddNumberToObject(a, "brightness_curve", config->alarm_curves[i]);
+        cJSON_AddNumberToObject(a, "color_temp_start", config->alarm_color_temp_start[i]);
+        cJSON_AddStringToObject(a, "name", config->alarm_names[i]);
         cJSON_AddItemToArray(alarms, a);
     }
 
@@ -448,6 +451,23 @@ static esp_err_t api_alarms_post_handler(httpd_req_t *req)
     if (cJSON_IsNumber(cooldown)) {
         uint8_t val = (uint8_t)cooldown->valuedouble;
         if (val <= 60) alarm->cooldown_min = val;
+    }
+
+    cJSON *curve = cJSON_GetObjectItem(json, "brightness_curve");
+    if (cJSON_IsNumber(curve)) {
+        uint8_t val = (uint8_t)curve->valuedouble;
+        if (val <= 4) config->alarm_curves[id] = val;
+    }
+
+    cJSON *ct_start = cJSON_GetObjectItem(json, "color_temp_start");
+    if (cJSON_IsNumber(ct_start)) {
+        config->alarm_color_temp_start[id] = (uint16_t)ct_start->valuedouble;
+    }
+
+    cJSON *name = cJSON_GetObjectItem(json, "name");
+    if (cJSON_IsString(name)) {
+        strncpy(config->alarm_names[id], name->valuestring, 15);
+        config->alarm_names[id][15] = '\0';
     }
 
     config_manager_save();
@@ -828,6 +848,9 @@ static const char *config_export_header =
     "//     brightness       - Target brightness, 0-100 (%)\n"
     "//     animation_preset - -1 = classic, 0-4 = animation preset index\n"
     "//     cooldown_min     - Auto-off delay, 0 = disabled, 1-60 minutes\n"
+    "//     brightness_curve - 0=logarithmic, 1=inverse_log, 2=linear, 3=sigmoid, 4=exponential\n"
+    "//     color_temp_start - Starting color temp (K), 0 = same as color_temp (no ramp)\n"
+    "//     name             - Optional display name, max 15 chars\n"
     "//\n"
     "//   animation_presets (array of 5 slots):\n"
     "//     name             - Display name, max 11 chars\n"
@@ -877,6 +900,9 @@ static esp_err_t api_config_export_handler(httpd_req_t *req)
         cJSON_AddNumberToObject(item, "brightness", a->brightness);
         cJSON_AddNumberToObject(item, "animation_preset", a->animation_preset);
         cJSON_AddNumberToObject(item, "cooldown_min", a->cooldown_min);
+        cJSON_AddNumberToObject(item, "brightness_curve", config->alarm_curves[i]);
+        cJSON_AddNumberToObject(item, "color_temp_start", config->alarm_color_temp_start[i]);
+        cJSON_AddStringToObject(item, "name", config->alarm_names[i]);
         cJSON_AddItemToArray(alarms, item);
     }
 
@@ -1018,6 +1044,9 @@ static esp_err_t api_config_import_handler(httpd_req_t *req)
     cJSON *alarms_arr = cJSON_GetObjectItem(json, "alarms");
     if (cJSON_IsArray(alarms_arr)) {
         memset(config->alarms, 0, sizeof(config->alarms));
+        memset(config->alarm_curves, 0, sizeof(config->alarm_curves));
+        memset(config->alarm_color_temp_start, 0, sizeof(config->alarm_color_temp_start));
+        memset(config->alarm_names, 0, sizeof(config->alarm_names));
         int count = cJSON_GetArraySize(alarms_arr);
         if (count > 8) count = 8;
         for (int i = 0; i < count; i++) {
@@ -1051,6 +1080,18 @@ static esp_err_t api_config_import_handler(httpd_req_t *req)
 
             v = cJSON_GetObjectItem(item, "cooldown_min");
             if (cJSON_IsNumber(v)) { uint8_t val = (uint8_t)v->valuedouble; if (val <= 60) a->cooldown_min = val; }
+
+            v = cJSON_GetObjectItem(item, "brightness_curve");
+            if (cJSON_IsNumber(v)) { uint8_t val = (uint8_t)v->valuedouble; if (val <= 4) config->alarm_curves[i] = val; }
+
+            v = cJSON_GetObjectItem(item, "color_temp_start");
+            if (cJSON_IsNumber(v)) { config->alarm_color_temp_start[i] = (uint16_t)v->valuedouble; }
+
+            v = cJSON_GetObjectItem(item, "name");
+            if (cJSON_IsString(v)) {
+                strncpy(config->alarm_names[i], v->valuestring, 15);
+                config->alarm_names[i][15] = '\0';
+            }
         }
     }
 

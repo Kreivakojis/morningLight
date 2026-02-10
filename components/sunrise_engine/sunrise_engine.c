@@ -18,6 +18,7 @@ extern void animation_engine_stop(void);
 
 // External curve functions
 extern float sunrise_curve_apply(sunrise_curve_t curve, float t);
+extern uint16_t sunrise_color_interpolate(float progress, uint16_t start_temp, uint16_t end_temp);
 
 // External wave generator function for animated sunrise
 extern void wave_generator_compute_with_base(uint8_t *, uint16_t, const animation_preset_t *, float, int16_t, float);
@@ -53,7 +54,8 @@ static struct {
     // Active sunrise info
     uint32_t start_time_ms;
     uint32_t duration_ms;
-    uint16_t color_temp;
+    uint16_t color_temp_start;
+    uint16_t color_temp_end;
     uint8_t max_brightness;
     float current_progress;
 
@@ -93,8 +95,10 @@ static void update_leds(float progress)
     ESP_LOGD(TAG, "Sunrise: %.0f%% -> %d%%", progress * 100.0f, ramp_brightness);
 
     if (!state.animation_mode) {
-        // Classic mode: uniform brightness
-        led_controller_set_color_temp(state.color_temp, ramp_brightness);
+        // Classic mode: interpolate color temperature from start to end
+        uint16_t current_temp = sunrise_color_interpolate(
+            progress, state.color_temp_start, state.color_temp_end);
+        led_controller_set_color_temp(current_temp, ramp_brightness);
     } else {
         // Animated mode: wave with ramped base brightness
         // Note: base color is set once in sunrise_task() before the loop,
@@ -120,8 +124,9 @@ static void update_leds(float progress)
 
 static void sunrise_task(void *arg)
 {
-    ESP_LOGI(TAG, "Sunrise started: %lums, %dK, %d%%, animation=%d",
-             state.duration_ms, state.color_temp, state.max_brightness, state.animation_mode);
+    ESP_LOGI(TAG, "Sunrise started: %lums, %dK->%dK, %d%%, animation=%d",
+             state.duration_ms, state.color_temp_start, state.color_temp_end,
+             state.max_brightness, state.animation_mode);
 
     state.start_time_ms = xTaskGetTickCount() * portTICK_PERIOD_MS;
     set_state(SUNRISE_STATE_ACTIVE);
@@ -223,6 +228,18 @@ static void sunrise_task(void *arg)
     vTaskDelete(NULL);
 }
 
+static sunrise_curve_t alarm_curve_to_engine_curve(uint8_t val)
+{
+    switch (val) {
+        case 0: return SUNRISE_CURVE_LOGARITHMIC;
+        case 1: return SUNRISE_CURVE_INVERSE_LOG;
+        case 2: return SUNRISE_CURVE_LINEAR;
+        case 3: return SUNRISE_CURVE_SIGMOID;
+        case 4: return SUNRISE_CURVE_EXPONENTIAL;
+        default: return SUNRISE_CURVE_LOGARITHMIC;
+    }
+}
+
 static void check_schedule(void)
 {
     if (!time_manager_is_synced()) {
@@ -293,9 +310,12 @@ static void check_schedule(void)
         }
 
         state.duration_ms = next->duration_min * 60 * 1000;
-        state.color_temp = next->color_temp;
+        state.color_temp_end = next->color_temp;
+        uint16_t ct_start = config->alarm_color_temp_start[alarm_id];
+        state.color_temp_start = (ct_start > 0) ? ct_start : next->color_temp;
         state.max_brightness = next->brightness;
         state.cooldown_min = next->cooldown_min;
+        state.curve = alarm_curve_to_engine_curve(config->alarm_curves[alarm_id]);
 
         // Limit to global max brightness
         if (state.max_brightness > config->brightness_max) {
@@ -417,8 +437,9 @@ int sunrise_engine_get_active_alarm(void)
     return state.scheduled_alarm_id;
 }
 
-esp_err_t sunrise_engine_start_manual(uint8_t duration_min, uint16_t color_temp,
-                                       uint8_t brightness, int8_t animation_preset)
+esp_err_t sunrise_engine_start_manual(uint8_t duration_min, uint16_t color_temp_start,
+                                       uint16_t color_temp_end, uint8_t brightness,
+                                       int8_t animation_preset, sunrise_curve_t curve)
 {
     if (state.state == SUNRISE_STATE_ACTIVE) {
         ESP_LOGW(TAG, "Sunrise already active");
@@ -444,14 +465,16 @@ esp_err_t sunrise_engine_start_manual(uint8_t duration_min, uint16_t color_temp,
                  animation_preset, duration_min, brightness);
     } else {
         state.animation_mode = false;
-        ESP_LOGI(TAG, "Starting manual sunrise: %d min, %dK, %d%%",
-                 duration_min, color_temp, brightness);
+        ESP_LOGI(TAG, "Starting manual sunrise: %d min, %dK->%dK, %d%%",
+                 duration_min, color_temp_start, color_temp_end, brightness);
     }
 
     state.scheduled_alarm_id = -1;
     state.duration_ms = duration_min * 60 * 1000;
-    state.color_temp = color_temp;
+    state.color_temp_start = color_temp_start;
+    state.color_temp_end = color_temp_end;
     state.max_brightness = brightness;
+    state.curve = curve;
     state.cooldown_min = 0;  // No auto-off for manual tests
 
     // Limit to global max brightness

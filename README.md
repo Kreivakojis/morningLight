@@ -275,6 +275,10 @@ Default settings can be modified in `sdkconfig.defaults` or via `idf.py menuconf
 - [ ] Ambient light sensor for auto-brightness
 - [ ] Multi-room synchronization
 
+## Credits
+
+- **Web UI Theme**: Terminal-style UI inspired by [terminal.css](https://github.com/letieu/terminal.css) by [letieu](https://github.com/letieu), using the Gruvbox Dark color palette.
+
 ## License
 
 MIT License
