@@ -60,7 +60,7 @@ void wave_generator_compute(
     float base = preset->base_brightness / 100.0f;
 
     // Variation scales from 0-100% to 0-20% actual variation
-    float variation_strength = preset->variation / 100.0f * 0.2f;
+    float variation_strength = preset->variation / 100.0f * 0.4f;
 
     for (uint16_t i = 0; i < led_count; i++) {
         // Spatial phase based on LED position
@@ -128,7 +128,11 @@ void wave_generator_compute_with_base(
         : (preset->base_brightness / 100.0f);
 
     // Variation scales from 0-100% to 0-20% actual variation
-    float variation_strength = preset->variation / 100.0f * 0.2f;
+    // During sunrise ramp, scale variation with the same curve as amplitude
+    float variation_strength = preset->variation / 100.0f * 0.4f;
+    if (amplitude_scale >= 0.0f) {
+        variation_strength *= amplitude_scale;
+    }
 
     for (uint16_t i = 0; i < led_count; i++) {
         // Spatial phase based on LED position

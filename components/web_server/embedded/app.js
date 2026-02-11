@@ -25,7 +25,8 @@ let darkModeSchedules = [];
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 
-// Time input constraints — enforce valid digits as you type
+// Time input constraints — enforce valid digits as you type,
+// auto-advance hour→minute, dismiss keyboard after minute
 function constrainTimeInput(el, max) {
     el.addEventListener('input', function() {
         let v = this.value.replace(/\D/g, '');
@@ -39,7 +40,23 @@ function constrainTimeInput(el, max) {
             if (parseInt(v) > max) v = String(max);
         }
         this.value = v;
+
+        // Auto-advance when 2 digits entered
+        if (v.length === 2) {
+            const picker = this.closest('.time-picker');
+            if (picker) {
+                const inputs = picker.querySelectorAll('input[type="number"]');
+                const idx = Array.from(inputs).indexOf(this);
+                if (idx < inputs.length - 1) {
+                    inputs[idx + 1].focus();
+                    inputs[idx + 1].select();
+                } else {
+                    this.blur();
+                }
+            }
+        }
     });
+    el.addEventListener('focus', function() { this.select(); });
     el.addEventListener('blur', function() {
         let n = parseInt(this.value) || 0;
         if (n > max) n = max;
