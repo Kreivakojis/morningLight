@@ -43,7 +43,7 @@ function constrainTimeInput(el, max) {
     el.addEventListener('blur', function() {
         let n = parseInt(this.value) || 0;
         if (n > max) n = max;
-        this.value = n;
+        this.value = String(n).padStart(2, '0');
     });
 }
 
@@ -160,14 +160,14 @@ function renderAlarms() {
 
     // Toggle handlers
     $$('.alarm-toggle').forEach(toggle => {
-        toggle.addEventListener('click', async (e) => {
+        toggle.addEventListener('click', (e) => {
             e.stopPropagation();
             const id = parseInt(toggle.dataset.id);
             const alarm = alarms.find(a => a.id === id);
             if (alarm) {
                 alarm.enabled = !alarm.enabled;
-                await api.post('/api/alarms', alarm);
                 toggle.classList.toggle('active');
+                api.post('/api/alarms', alarm);
             }
         });
     });
@@ -188,8 +188,8 @@ function editAlarm(id) {
     $('#alarm-id').value = alarm ? alarm.id : -1;
     $('#btn-alarm-delete').style.display = alarm ? '' : 'none';
     $('#alarm-name').value = alarm ? (alarm.name || '') : '';
-    $('#alarm-hour').value = alarm ? alarm.hour : 7;
-    $('#alarm-minute').value = alarm ? alarm.minute : 0;
+    $('#alarm-hour').value = String(alarm ? alarm.hour : 7).padStart(2, '0');
+    $('#alarm-minute').value = String(alarm ? alarm.minute : 0).padStart(2, '0');
     $('#alarm-duration').value = alarm ? alarm.duration_min : 30;
     $('#alarm-duration-val').textContent = `${alarm ? alarm.duration_min : 30} min`;
     // Color temp range
@@ -426,6 +426,10 @@ $('#pwm-frequency').addEventListener('input', (e) => {
     $('#pwm-frequency-val').textContent = `${e.target.value} Hz`;
 });
 
+$('#gamma').addEventListener('input', (e) => {
+    $('#gamma-val').textContent = (e.target.value / 10).toFixed(1);
+});
+
 // LED type selection
 $('#led-type').addEventListener('change', (e) => {
     const isWS2811 = e.target.value === '1';
@@ -439,7 +443,8 @@ $('#btn-save-settings').addEventListener('click', async () => {
         timezone: $('#timezone').value,
         brightness_max: parseInt($('#max-brightness').value),
         led_type: ledType,
-        led_count: parseInt($('#led-count').value)
+        led_count: parseInt($('#led-count').value),
+        gamma: parseInt($('#gamma').value) / 10
     };
 
     // Only include PWM frequency for PWM mode
@@ -473,6 +478,11 @@ async function loadConfig() {
         const ledType = config.led_type || 0;
         $('#led-type').value = ledType;
         $('#led-count').value = config.led_count || 30;
+
+        // Gamma correction
+        const gammaVal = config.gamma !== undefined ? Math.round(config.gamma * 10) : 22;
+        $('#gamma').value = gammaVal;
+        $('#gamma-val').textContent = (gammaVal / 10).toFixed(1);
 
         // Show/hide fields based on LED type
         const isWS2811 = ledType === 1;
@@ -553,6 +563,121 @@ function loadPresetIntoForm(id) {
 $('#anim-preset').addEventListener('change', (e) => {
     loadPresetIntoForm(parseInt(e.target.value));
 });
+
+// Wave preview
+(function() {
+    const canvas = $('#wave-canvas');
+    const ctx = canvas.getContext('2d');
+    let t = 0;
+    let lastTime = 0;
+
+    // Value noise matching wave_generator.c: cubic Hermite interpolated
+    var NOISE_SEED = 42.0;
+    function valueNoise(x) {
+        var xi = Math.floor(x);
+        var xf = x - xi;
+        var sm = xf * xf * (3.0 - 2.0 * xf);
+        var h1 = Math.sin(xi * 12.9898 + NOISE_SEED * 78.233) * 43758.5453;
+        var h2 = Math.sin((xi + 1) * 12.9898 + NOISE_SEED * 78.233) * 43758.5453;
+        h1 = h1 - Math.floor(h1);
+        h2 = h2 - Math.floor(h2);
+        return h1 + (h2 - h1) * sm;
+    }
+
+    // Color temperature to RGB (approx Planckian locus)
+    function colorTempToRGB(kelvin) {
+        var t = kelvin / 100;
+        var r, g, b;
+        if (t <= 66) {
+            r = 255;
+            g = 99.4708025861 * Math.log(t) - 161.1195681661;
+            b = t <= 19 ? 0 : 138.5177312231 * Math.log(t - 10) - 305.0447927307;
+        } else {
+            r = 329.698727446 * Math.pow(t - 60, -0.1332047592);
+            g = 288.1221695283 * Math.pow(t - 60, -0.0755148492);
+            b = 255;
+        }
+        r = Math.max(0, Math.min(255, r));
+        g = Math.max(0, Math.min(255, g));
+        b = Math.max(0, Math.min(255, b));
+        return 'rgb(' + Math.round(r) + ',' + Math.round(g) + ',' + Math.round(b) + ')';
+    }
+
+    function resize() {
+        var r = canvas.parentElement.getBoundingClientRect();
+        canvas.width = r.width * (window.devicePixelRatio || 1);
+        canvas.height = r.height * (window.devicePixelRatio || 1);
+    }
+
+    function getParams() {
+        return {
+            wavelength: parseFloat($('#anim-wavelength').value),
+            amplitude: parseInt($('#anim-amplitude').value) / 100,
+            speed: speedFromSlider(parseInt($('#anim-speed').value)),
+            base: parseInt($('#anim-base').value) / 100,
+            variation: parseInt($('#anim-variation').value) / 100,
+            colorTemp: colorTempFromSlider(parseInt($('#anim-color-temp').value))
+        };
+    }
+
+    function draw(now) {
+        if (!lastTime) lastTime = now;
+        var dt = (now - lastTime) / 1000;
+        lastTime = now;
+
+        var p = getParams();
+        t += p.speed * dt;
+
+        var w = canvas.width;
+        var h = canvas.height;
+        var pad = 6;
+        var dpr = window.devicePixelRatio || 1;
+
+        ctx.clearRect(0, 0, w, h);
+
+        // Baseline
+        var baseY = h - pad - (h - pad * 2) * p.base;
+        ctx.strokeStyle = '#504945';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(0, baseY);
+        ctx.lineTo(w, baseY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Wave line — color from temperature
+        var lineColor = colorTempToRGB(p.colorTemp);
+        ctx.strokeStyle = lineColor;
+        ctx.lineWidth = 2 * dpr;
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+
+        var steps = Math.max(200, Math.round(w / dpr));
+        var spatialFreq = (2 * Math.PI) / p.wavelength;
+        var temporalPhase = t * 2 * Math.PI;
+        var variStrength = p.variation * 0.2;
+        for (var i = 0; i <= steps; i++) {
+            var x = (i / steps) * w;
+            var led = (i / steps) * 60;
+            var wave = Math.sin(led * spatialFreq + temporalPhase);
+            var noiseX = led * 0.1 + t * 0.3;
+            var variation = 1.0 + (valueNoise(noiseX) - 0.5) * 2.0 * variStrength;
+            var val = p.base + p.amplitude * 0.5 * wave * variation;
+            if (val < 0) val = 0;
+            if (val > 1) val = 1;
+            var y = h - pad - (h - pad * 2) * val;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        requestAnimationFrame(draw);
+    }
+
+    new ResizeObserver(function() { resize(); }).observe(canvas.parentElement);
+    requestAnimationFrame(draw);
+})();
 
 // Animation slider value updates
 $('#anim-wavelength').addEventListener('input', (e) => {
@@ -663,14 +788,14 @@ function renderDarkMode() {
 
     // Toggle handlers
     $$('.darkmode-item .alarm-toggle').forEach(toggle => {
-        toggle.addEventListener('click', async (e) => {
+        toggle.addEventListener('click', (e) => {
             e.stopPropagation();
             const id = parseInt(toggle.dataset.id);
             const schedule = darkModeSchedules.find(s => s.id === id);
             if (schedule) {
                 schedule.enabled = !schedule.enabled;
-                await api.post('/api/darkmode', schedule);
                 toggle.classList.toggle('active');
+                api.post('/api/darkmode', schedule);
             }
         });
     });
@@ -686,10 +811,10 @@ function editDarkMode(id) {
 
     $('#darkmode-modal-title').textContent = schedule ? 'Edit Dark Mode' : 'New Dark Mode';
     $('#darkmode-id').value = schedule ? schedule.id : -1;
-    $('#darkmode-start-hour').value = schedule ? schedule.start_hour : 22;
-    $('#darkmode-start-minute').value = schedule ? schedule.start_minute : 0;
-    $('#darkmode-end-hour').value = schedule ? schedule.end_hour : 6;
-    $('#darkmode-end-minute').value = schedule ? schedule.end_minute : 0;
+    $('#darkmode-start-hour').value = String(schedule ? schedule.start_hour : 22).padStart(2, '0');
+    $('#darkmode-start-minute').value = String(schedule ? schedule.start_minute : 0).padStart(2, '0');
+    $('#darkmode-end-hour').value = String(schedule ? schedule.end_hour : 6).padStart(2, '0');
+    $('#darkmode-end-minute').value = String(schedule ? schedule.end_minute : 0).padStart(2, '0');
     $('#darkmode-override').checked = schedule ? schedule.allow_override : false;
 
     $('#btn-darkmode-delete').style.display = schedule ? '' : 'none';

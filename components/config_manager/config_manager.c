@@ -107,6 +107,9 @@ static void set_defaults(void)
 
     // Per-alarm display names
     memset(config.alarm_names, 0, sizeof(config.alarm_names));
+
+    // Gamma correction
+    config.gamma_x10 = 22;
 }
 
 esp_err_t config_manager_init(void)

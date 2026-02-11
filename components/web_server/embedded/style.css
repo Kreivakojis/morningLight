@@ -701,6 +701,20 @@ select {
     z-index: 1;
 }
 
+/* Wave preview */
+.wave-preview {
+    border: 1px solid var(--border-color);
+    background: var(--terminal-bg);
+    margin-bottom: 16px;
+    height: 100px;
+}
+
+.wave-preview canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
 /* Dark mode banner */
 .dark-mode-banner {
     margin-top: 12px;

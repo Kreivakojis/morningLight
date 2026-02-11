@@ -233,6 +233,9 @@
         <section id="page-animation" class="page">
             <div class="card">
                 <h2>Wave Animation</h2>
+                <div class="wave-preview">
+                    <canvas id="wave-canvas"></canvas>
+                </div>
                 <div class="form-group">
                     <label>Preset</label>
                     <select id="anim-preset">
@@ -362,6 +365,11 @@
                     <label>PWM Frequency (Hz)</label>
                     <input type="range" id="pwm-frequency" min="100" max="500" value="200">
                     <span id="pwm-frequency-val">200 Hz</span>
+                </div>
+                <div class="form-group">
+                    <label>Gamma Correction</label>
+                    <input type="range" id="gamma" min="10" max="40" value="22">
+                    <span id="gamma-val">2.2</span>
                 </div>
             </div>
 

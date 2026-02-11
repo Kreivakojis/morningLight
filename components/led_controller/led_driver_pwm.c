@@ -20,8 +20,11 @@ static const char *TAG = "led_pwm";
 #define LEDC_CHANNEL_G      LEDC_CHANNEL_1
 #define LEDC_CHANNEL_B      LEDC_CHANNEL_2
 
-// Gamma correction value
-#define GAMMA_VALUE         2.2f
+static float get_gamma(void) {
+    device_config_t *cfg = config_manager_get();
+    uint8_t g = cfg ? cfg->gamma_x10 : 0;
+    return (g >= 10 && g <= 40) ? g / 10.0f : 2.2f;
+}
 
 // State
 static struct {
@@ -44,9 +47,10 @@ static void apply_pwm(void)
 
     // Apply gamma correction to get duty cycle
     // N-channel MOSFETs: HIGH = ON, higher duty = brighter
-    uint32_t duty_r = color_utils_gamma_correct(scaled_r, GAMMA_VALUE);
-    uint32_t duty_g = color_utils_gamma_correct(scaled_g, GAMMA_VALUE);
-    uint32_t duty_b = color_utils_gamma_correct(scaled_b, GAMMA_VALUE);
+    float gamma = get_gamma();
+    uint32_t duty_r = color_utils_gamma_correct(scaled_r, gamma);
+    uint32_t duty_g = color_utils_gamma_correct(scaled_g, gamma);
+    uint32_t duty_b = color_utils_gamma_correct(scaled_b, gamma);
 
     ESP_LOGD(TAG, "PWM duty: R=%lu, G=%lu, B=%lu", duty_r, duty_g, duty_b);
 

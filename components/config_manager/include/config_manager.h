@@ -97,6 +97,9 @@ typedef struct {
 
     // Per-alarm display names (added at end for NVS compat)
     char alarm_names[8][16];            // Optional display name, empty string = unnamed
+
+    // Gamma correction (added at end for NVS compat)
+    uint8_t gamma_x10;                  // Gamma * 10: 22 = 2.2. Range 10-40 (1.0-4.0). 0 treated as 22
 } device_config_t;
 
 /**

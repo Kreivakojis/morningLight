@@ -278,6 +278,7 @@ static esp_err_t api_config_get_handler(httpd_req_t *req)
     cJSON_AddStringToObject(json, "led_type_name",
         config->led_type == CONFIG_LED_TYPE_WS2811 ? "WS2811" : "PWM");
     cJSON_AddNumberToObject(json, "led_count", config->led_count);
+    cJSON_AddNumberToObject(json, "gamma", config->gamma_x10 / 10.0);
 
     // WiFi (don't expose password)
     cJSON *wifi = cJSON_AddObjectToObject(json, "wifi");
@@ -340,6 +341,14 @@ static esp_err_t api_config_post_handler(httpd_req_t *req)
             }
             config->led_count = new_count;
         }
+    }
+
+    cJSON *gamma = cJSON_GetObjectItem(json, "gamma");
+    if (cJSON_IsNumber(gamma)) {
+        int g = (int)(gamma->valuedouble * 10 + 0.5);
+        if (g < 10) g = 10;
+        if (g > 40) g = 40;
+        config->gamma_x10 = (uint8_t)g;
     }
 
     ESP_LOGI(TAG, "Saving config with led_type=%d, led_count=%d", config->led_type, config->led_count);
@@ -837,6 +846,7 @@ static const char *config_export_header =
     "//   led_type         - 0 = PWM RGB, 1 = WS2811 addressable\n"
     "//   led_count        - Number of WS2811 LEDs, 1-300\n"
     "//   pwm_frequency    - PWM frequency in Hz, 100-40000\n"
+    "//   gamma            - Gamma correction value, 1.0-4.0 (default 2.2)\n"
     "//\n"
     "//   alarms (array of 8 slots):\n"
     "//     enabled          - true/false\n"
@@ -885,6 +895,7 @@ static esp_err_t api_config_export_handler(httpd_req_t *req)
     cJSON_AddNumberToObject(json, "led_type", config->led_type);
     cJSON_AddNumberToObject(json, "led_count", config->led_count);
     cJSON_AddNumberToObject(json, "pwm_frequency", config->pwm_frequency);
+    cJSON_AddNumberToObject(json, "gamma", config->gamma_x10 / 10.0);
 
     // Alarms (all 8 slots)
     cJSON *alarms = cJSON_AddArrayToObject(json, "alarms");
@@ -1037,6 +1048,14 @@ static esp_err_t api_config_import_handler(httpd_req_t *req)
                 restart_required = true;
             }
             config->led_count = new_count;
+        }
+    }
+
+    cJSON *gamma_item = cJSON_GetObjectItem(json, "gamma");
+    if (cJSON_IsNumber(gamma_item)) {
+        int g = (int)(gamma_item->valuedouble * 10 + 0.5);
+        if (g >= 10 && g <= 40) {
+            config->gamma_x10 = (uint8_t)g;
         }
     }
 

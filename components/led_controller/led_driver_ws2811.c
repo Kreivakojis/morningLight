@@ -12,8 +12,11 @@ static const char *TAG = "led_ws2811";
 // Max supported LEDs
 #define MAX_LED_COUNT       300
 
-// Gamma correction value (same as PWM driver)
-#define GAMMA_VALUE         2.2f
+static float get_gamma(void) {
+    device_config_t *cfg = config_manager_get();
+    uint8_t g = cfg ? cfg->gamma_x10 : 0;
+    return (g >= 10 && g <= 40) ? g / 10.0f : 2.2f;
+}
 
 // State
 static struct {
@@ -37,9 +40,10 @@ static void update_pixels(void)
     // This preserves low-brightness resolution. The old approach of scaling
     // first then gamma-correcting crushed small values to zero through the
     // 12-bit PWM intermediary (e.g. 8% brightness → output 0).
-    uint8_t out_r = (uint8_t)(powf(ws2811_state.r / 255.0f, GAMMA_VALUE) * brightness_scale * 255.0f);
-    uint8_t out_g = (uint8_t)(powf(ws2811_state.g / 255.0f, GAMMA_VALUE) * brightness_scale * 255.0f);
-    uint8_t out_b = (uint8_t)(powf(ws2811_state.b / 255.0f, GAMMA_VALUE) * brightness_scale * 255.0f);
+    float gamma = get_gamma();
+    uint8_t out_r = (uint8_t)(powf(ws2811_state.r / 255.0f, gamma) * brightness_scale * 255.0f);
+    uint8_t out_g = (uint8_t)(powf(ws2811_state.g / 255.0f, gamma) * brightness_scale * 255.0f);
+    uint8_t out_b = (uint8_t)(powf(ws2811_state.b / 255.0f, gamma) * brightness_scale * 255.0f);
 
     ESP_LOGD(TAG, "LED update: RGB(%d,%d,%d) bright=%d%% -> out RGB(%d,%d,%d)",
              ws2811_state.r, ws2811_state.g, ws2811_state.b,
@@ -159,9 +163,10 @@ static void ws2811_set_pixel_brightnesses(const uint8_t *brightness_array, uint1
     }
 
     // Gamma-correct base color once at full intensity, then scale per-LED
-    float gamma_r = powf(ws2811_state.r / 255.0f, GAMMA_VALUE) * 255.0f;
-    float gamma_g = powf(ws2811_state.g / 255.0f, GAMMA_VALUE) * 255.0f;
-    float gamma_b = powf(ws2811_state.b / 255.0f, GAMMA_VALUE) * 255.0f;
+    float gamma = get_gamma();
+    float gamma_r = powf(ws2811_state.r / 255.0f, gamma) * 255.0f;
+    float gamma_g = powf(ws2811_state.g / 255.0f, gamma) * 255.0f;
+    float gamma_b = powf(ws2811_state.b / 255.0f, gamma) * 255.0f;
 
     for (uint16_t i = 0; i < count; i++) {
         uint8_t brightness = brightness_array[i];
