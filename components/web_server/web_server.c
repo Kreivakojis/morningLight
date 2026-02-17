@@ -523,6 +523,8 @@ static esp_err_t api_led_test_handler(httpd_req_t *req)
     }
 
     if (cJSON_IsTrue(off)) {
+        // Cancel active sunrise (alarm without cooldown scenario)
+        sunrise_engine_cancel();
         led_controller_off();
     } else if (cJSON_IsNumber(color_temp) && cJSON_IsNumber(brightness)) {
         uint16_t temp = (uint16_t)color_temp->valuedouble;
