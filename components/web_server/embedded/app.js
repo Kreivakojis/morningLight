@@ -80,6 +80,14 @@ $$('.nav-btn').forEach(btn => {
     });
 });
 
+// Collapsible cards in settings
+$('#page-settings').addEventListener('click', (e) => {
+    const h2 = e.target.closest('.collapsible h2');
+    if (h2) {
+        h2.closest('.collapsible').classList.toggle('collapsed');
+    }
+});
+
 // Status updates
 async function updateStatus() {
     try {
@@ -461,7 +469,12 @@ $('#btn-save-settings').addEventListener('click', async () => {
         brightness_max: parseInt($('#max-brightness').value),
         led_type: ledType,
         led_count: parseInt($('#led-count').value),
-        gamma: parseInt($('#gamma').value) / 10
+        gamma: parseInt($('#gamma').value) / 10,
+        temp_offset_ntc: parseFloat($('#temp-offset-ntc').value) || 0,
+        temp_offset_ds1: parseFloat($('#temp-offset-ds1').value) || 0,
+        temp_offset_ds2: parseFloat($('#temp-offset-ds2').value) || 0,
+        temp_name_ds1: $('#temp-name-ds1').value.trim(),
+        temp_name_ds2: $('#temp-name-ds2').value.trim()
     };
 
     // Only include PWM frequency for PWM mode
@@ -500,6 +513,20 @@ async function loadConfig() {
         const gammaVal = config.gamma !== undefined ? Math.round(config.gamma * 10) : 22;
         $('#gamma').value = gammaVal;
         $('#gamma-val').textContent = (gammaVal / 10).toFixed(1);
+
+        // Temperature calibration offsets
+        $('#temp-offset-ntc').value = (config.temp_offset_ntc || 0).toFixed(1);
+        $('#temp-offset-ds1').value = (config.temp_offset_ds1 || 0).toFixed(1);
+        $('#temp-offset-ds2').value = (config.temp_offset_ds2 || 0).toFixed(1);
+
+        // Sensor names
+        const name1 = config.temp_name_ds1 || '';
+        const name2 = config.temp_name_ds2 || '';
+        $('#temp-name-ds1').value = name1;
+        $('#temp-name-ds2').value = name2;
+        // Update home tab labels
+        document.querySelector('#temp-external-1').previousElementSibling.textContent = name1 || 'External 1';
+        document.querySelector('#temp-external-2').previousElementSibling.textContent = name2 || 'External 2';
 
         // Show/hide fields based on LED type
         const isWS2811 = ledType === 1;

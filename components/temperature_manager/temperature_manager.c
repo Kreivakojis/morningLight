@@ -8,6 +8,7 @@
 #include "ds18b20.h"
 
 #include "temperature_manager.h"
+#include "config_manager.h"
 
 static const char *TAG = "temp_mgr";
 
@@ -28,7 +29,8 @@ static float ntc_adc_to_temperature(int adc_raw)
         return NAN;
     }
 
-    float r_ntc = (float)CONFIG_ML_NTC_R_PULLUP * (float)adc_raw / (4095.0f - (float)adc_raw);
+    // NTC is on the high side (3.3V → NTC → ADC → R_pulldown → GND)
+    float r_ntc = (float)CONFIG_ML_NTC_R_PULLUP * (4095.0f - (float)adc_raw) / (float)adc_raw;
 
     // Beta equation: 1/T = 1/T0 + (1/B) * ln(R/R0)
     float t0 = 298.15f; // 25°C in Kelvin
@@ -208,7 +210,14 @@ esp_err_t temperature_manager_get_temperature(temp_sensor_id_t sensor_id, float 
         return ESP_ERR_NOT_FOUND;
     }
 
-    *temperature = s_temperatures[sensor_id];
+    float offset = 0.0f;
+    device_config_t *cfg = config_manager_get();
+    if (cfg) {
+        if (sensor_id == TEMP_SENSOR_INTERNAL)   offset = cfg->temp_offset_ntc_x10 / 10.0f;
+        if (sensor_id == TEMP_SENSOR_EXTERNAL_1) offset = cfg->temp_offset_ds1_x10 / 10.0f;
+        if (sensor_id == TEMP_SENSOR_EXTERNAL_2) offset = cfg->temp_offset_ds2_x10 / 10.0f;
+    }
+    *temperature = s_temperatures[sensor_id] + offset;
     return ESP_OK;
 }
 

@@ -149,7 +149,10 @@ static void publish_ha_discovery(void)
     }
 
     // --- Temperature sensors ---
-    const char *sensor_names[] = {"Internal Temp", "External Temp 1", "External Temp 2"};
+    device_config_t *cfg = config_manager_get();
+    const char *ds1_name = (cfg && cfg->temp_name_ds1[0]) ? cfg->temp_name_ds1 : "External Temp 1";
+    const char *ds2_name = (cfg && cfg->temp_name_ds2[0]) ? cfg->temp_name_ds2 : "External Temp 2";
+    const char *sensor_names[] = {"Internal Temp", ds1_name, ds2_name};
     const char *sensor_ids[] = {"temp_internal", "temp_ext1", "temp_ext2"};
 
     for (int i = 0; i < 3; i++) {
@@ -695,4 +698,11 @@ void mqtt_manager_deinit(void)
 {
     mqtt_manager_stop();
     initialized = false;
+}
+
+void mqtt_manager_republish_discovery(void)
+{
+    if (connected) {
+        publish_ha_discovery();
+    }
 }

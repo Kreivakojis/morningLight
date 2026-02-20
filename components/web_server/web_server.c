@@ -279,6 +279,11 @@ static esp_err_t api_config_get_handler(httpd_req_t *req)
         config->led_type == CONFIG_LED_TYPE_WS2811 ? "WS2811" : "PWM");
     cJSON_AddNumberToObject(json, "led_count", config->led_count);
     cJSON_AddNumberToObject(json, "gamma", config->gamma_x10 / 10.0);
+    cJSON_AddNumberToObject(json, "temp_offset_ntc", config->temp_offset_ntc_x10 / 10.0);
+    cJSON_AddNumberToObject(json, "temp_offset_ds1", config->temp_offset_ds1_x10 / 10.0);
+    cJSON_AddNumberToObject(json, "temp_offset_ds2", config->temp_offset_ds2_x10 / 10.0);
+    cJSON_AddStringToObject(json, "temp_name_ds1", config->temp_name_ds1);
+    cJSON_AddStringToObject(json, "temp_name_ds2", config->temp_name_ds2);
 
     // WiFi (don't expose password)
     cJSON *wifi = cJSON_AddObjectToObject(json, "wifi");
@@ -351,9 +356,51 @@ static esp_err_t api_config_post_handler(httpd_req_t *req)
         config->gamma_x10 = (uint8_t)g;
     }
 
+    cJSON *toff;
+    toff = cJSON_GetObjectItem(json, "temp_offset_ntc");
+    if (cJSON_IsNumber(toff)) {
+        int v = (int)(toff->valuedouble * 10 + (toff->valuedouble >= 0 ? 0.5 : -0.5));
+        if (v < -50) { v = -50; } else if (v > 50) { v = 50; }
+        config->temp_offset_ntc_x10 = (int8_t)v;
+    }
+    toff = cJSON_GetObjectItem(json, "temp_offset_ds1");
+    if (cJSON_IsNumber(toff)) {
+        int v = (int)(toff->valuedouble * 10 + (toff->valuedouble >= 0 ? 0.5 : -0.5));
+        if (v < -50) { v = -50; } else if (v > 50) { v = 50; }
+        config->temp_offset_ds1_x10 = (int8_t)v;
+    }
+    toff = cJSON_GetObjectItem(json, "temp_offset_ds2");
+    if (cJSON_IsNumber(toff)) {
+        int v = (int)(toff->valuedouble * 10 + (toff->valuedouble >= 0 ? 0.5 : -0.5));
+        if (v < -50) { v = -50; } else if (v > 50) { v = 50; }
+        config->temp_offset_ds2_x10 = (int8_t)v;
+    }
+
+    bool names_changed = false;
+    cJSON *tname;
+    tname = cJSON_GetObjectItem(json, "temp_name_ds1");
+    if (cJSON_IsString(tname)) {
+        if (strncmp(config->temp_name_ds1, tname->valuestring, sizeof(config->temp_name_ds1)) != 0) {
+            strncpy(config->temp_name_ds1, tname->valuestring, sizeof(config->temp_name_ds1) - 1);
+            config->temp_name_ds1[sizeof(config->temp_name_ds1) - 1] = '\0';
+            names_changed = true;
+        }
+    }
+    tname = cJSON_GetObjectItem(json, "temp_name_ds2");
+    if (cJSON_IsString(tname)) {
+        if (strncmp(config->temp_name_ds2, tname->valuestring, sizeof(config->temp_name_ds2)) != 0) {
+            strncpy(config->temp_name_ds2, tname->valuestring, sizeof(config->temp_name_ds2) - 1);
+            config->temp_name_ds2[sizeof(config->temp_name_ds2) - 1] = '\0';
+            names_changed = true;
+        }
+    }
+
     ESP_LOGI(TAG, "Saving config with led_type=%d, led_count=%d", config->led_type, config->led_count);
 
     config_manager_save();
+    if (names_changed) {
+        mqtt_manager_republish_discovery();
+    }
     cJSON_Delete(json);
 
     cJSON *resp = cJSON_CreateObject();
@@ -849,6 +896,11 @@ static const char *config_export_header =
     "//   led_count        - Number of WS2811 LEDs, 1-300\n"
     "//   pwm_frequency    - PWM frequency in Hz, 100-40000\n"
     "//   gamma            - Gamma correction value, 1.0-4.0 (default 2.2)\n"
+    "//   temp_offset_ntc  - NTC calibration offset in °C, -5.0 to +5.0 (default 0)\n"
+    "//   temp_offset_ds1  - DS18B20 #1 calibration offset in °C, -5.0 to +5.0 (default 0)\n"
+    "//   temp_offset_ds2  - DS18B20 #2 calibration offset in °C, -5.0 to +5.0 (default 0)\n"
+    "//   temp_name_ds1    - Display name for External 1 sensor, max 16 chars (default \"External 1\")\n"
+    "//   temp_name_ds2    - Display name for External 2 sensor, max 16 chars (default \"External 2\")\n"
     "//\n"
     "//   alarms (array of 8 slots):\n"
     "//     enabled          - true/false\n"
@@ -898,6 +950,11 @@ static esp_err_t api_config_export_handler(httpd_req_t *req)
     cJSON_AddNumberToObject(json, "led_count", config->led_count);
     cJSON_AddNumberToObject(json, "pwm_frequency", config->pwm_frequency);
     cJSON_AddNumberToObject(json, "gamma", config->gamma_x10 / 10.0);
+    cJSON_AddNumberToObject(json, "temp_offset_ntc", config->temp_offset_ntc_x10 / 10.0);
+    cJSON_AddNumberToObject(json, "temp_offset_ds1", config->temp_offset_ds1_x10 / 10.0);
+    cJSON_AddNumberToObject(json, "temp_offset_ds2", config->temp_offset_ds2_x10 / 10.0);
+    cJSON_AddStringToObject(json, "temp_name_ds1", config->temp_name_ds1);
+    cJSON_AddStringToObject(json, "temp_name_ds2", config->temp_name_ds2);
 
     // Alarms (all 8 slots)
     cJSON *alarms = cJSON_AddArrayToObject(json, "alarms");
@@ -1059,6 +1116,35 @@ static esp_err_t api_config_import_handler(httpd_req_t *req)
         if (g >= 10 && g <= 40) {
             config->gamma_x10 = (uint8_t)g;
         }
+    }
+
+    cJSON *toff_item;
+    toff_item = cJSON_GetObjectItem(json, "temp_offset_ntc");
+    if (cJSON_IsNumber(toff_item)) {
+        int v = (int)(toff_item->valuedouble * 10 + (toff_item->valuedouble >= 0 ? 0.5 : -0.5));
+        if (v >= -50 && v <= 50) config->temp_offset_ntc_x10 = (int8_t)v;
+    }
+    toff_item = cJSON_GetObjectItem(json, "temp_offset_ds1");
+    if (cJSON_IsNumber(toff_item)) {
+        int v = (int)(toff_item->valuedouble * 10 + (toff_item->valuedouble >= 0 ? 0.5 : -0.5));
+        if (v >= -50 && v <= 50) config->temp_offset_ds1_x10 = (int8_t)v;
+    }
+    toff_item = cJSON_GetObjectItem(json, "temp_offset_ds2");
+    if (cJSON_IsNumber(toff_item)) {
+        int v = (int)(toff_item->valuedouble * 10 + (toff_item->valuedouble >= 0 ? 0.5 : -0.5));
+        if (v >= -50 && v <= 50) config->temp_offset_ds2_x10 = (int8_t)v;
+    }
+
+    cJSON *tname_item;
+    tname_item = cJSON_GetObjectItem(json, "temp_name_ds1");
+    if (cJSON_IsString(tname_item)) {
+        strncpy(config->temp_name_ds1, tname_item->valuestring, sizeof(config->temp_name_ds1) - 1);
+        config->temp_name_ds1[sizeof(config->temp_name_ds1) - 1] = '\0';
+    }
+    tname_item = cJSON_GetObjectItem(json, "temp_name_ds2");
+    if (cJSON_IsString(tname_item)) {
+        strncpy(config->temp_name_ds2, tname_item->valuestring, sizeof(config->temp_name_ds2) - 1);
+        config->temp_name_ds2[sizeof(config->temp_name_ds2) - 1] = '\0';
     }
 
     // Alarms — if present, replace all 8 slots

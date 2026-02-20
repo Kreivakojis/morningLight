@@ -100,6 +100,15 @@ typedef struct {
 
     // Gamma correction (added at end for NVS compat)
     uint8_t gamma_x10;                  // Gamma * 10: 22 = 2.2. Range 10-40 (1.0-4.0). 0 treated as 22
+
+    // Temperature calibration offsets (added at end for NVS compat)
+    int8_t temp_offset_ntc_x10;         // NTC offset in 0.1°C steps, range -50..+50 (-5.0..+5.0°C)
+    int8_t temp_offset_ds1_x10;         // DS18B20 #1 offset
+    int8_t temp_offset_ds2_x10;         // DS18B20 #2 offset
+
+    // External sensor display names (added at end for NVS compat)
+    char temp_name_ds1[17];             // Custom name for External 1, empty = "External 1"
+    char temp_name_ds2[17];             // Custom name for External 2, empty = "External 2"
 } device_config_t;
 
 /**

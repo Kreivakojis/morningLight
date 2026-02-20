@@ -297,147 +297,187 @@
         <!-- Settings Page -->
         <section id="page-settings" class="page">
             <!-- WiFi Setup -->
-            <div class="card" id="wifi-setup">
+            <div class="card collapsible collapsed" id="wifi-setup">
                 <h2>WiFi Setup</h2>
-                <div id="wifi-networks"></div>
-                <button id="btn-scan" class="btn btn-full">Scan Networks</button>
-                <button id="btn-manual-wifi" class="btn btn-full" style="margin-top:10px">Connect Manually</button>
-                <div id="wifi-connect-form" style="display:none">
-                    <input type="text" id="wifi-ssid" placeholder="Network name">
-                    <input type="password" id="wifi-password" placeholder="Password">
-                    <button id="btn-connect" class="btn btn-primary btn-full">Connect</button>
+                <div class="card-body">
+                    <div id="wifi-networks"></div>
+                    <button id="btn-scan" class="btn btn-full">Scan Networks</button>
+                    <button id="btn-manual-wifi" class="btn btn-full" style="margin-top:10px">Connect Manually</button>
+                    <div id="wifi-connect-form" style="display:none">
+                        <input type="text" id="wifi-ssid" placeholder="Network name">
+                        <input type="password" id="wifi-password" placeholder="Password">
+                        <button id="btn-connect" class="btn btn-primary btn-full">Connect</button>
+                    </div>
                 </div>
             </div>
 
             <!-- Time Settings -->
-            <div class="card">
+            <div class="card collapsible collapsed">
                 <h2>Time</h2>
-                <div class="form-group">
-                    <label>Timezone</label>
-                    <select id="timezone">
-                        <option value="UTC12">UTC-12</option>
-                        <option value="UTC11">UTC-11</option>
-                        <option value="UTC10">UTC-10</option>
-                        <option value="UTC9">UTC-9</option>
-                        <option value="UTC8">UTC-8</option>
-                        <option value="UTC7">UTC-7</option>
-                        <option value="UTC6">UTC-6</option>
-                        <option value="UTC5">UTC-5</option>
-                        <option value="UTC4">UTC-4</option>
-                        <option value="UTC3">UTC-3</option>
-                        <option value="UTC2">UTC-2</option>
-                        <option value="UTC1">UTC-1</option>
-                        <option value="UTC0" selected>UTC</option>
-                        <option value="UTC-1">UTC+1</option>
-                        <option value="UTC-2">UTC+2</option>
-                        <option value="UTC-3">UTC+3</option>
-                        <option value="UTC-4">UTC+4</option>
-                        <option value="UTC-5">UTC+5</option>
-                        <option value="UTC-6">UTC+6</option>
-                        <option value="UTC-7">UTC+7</option>
-                        <option value="UTC-8">UTC+8</option>
-                        <option value="UTC-9">UTC+9</option>
-                        <option value="UTC-10">UTC+10</option>
-                        <option value="UTC-11">UTC+11</option>
-                        <option value="UTC-12">UTC+12</option>
-                        <option value="UTC-13">UTC+13</option>
-                        <option value="UTC-14">UTC+14</option>
-                    </select>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label>Timezone</label>
+                        <select id="timezone">
+                            <option value="UTC12">UTC-12</option>
+                            <option value="UTC11">UTC-11</option>
+                            <option value="UTC10">UTC-10</option>
+                            <option value="UTC9">UTC-9</option>
+                            <option value="UTC8">UTC-8</option>
+                            <option value="UTC7">UTC-7</option>
+                            <option value="UTC6">UTC-6</option>
+                            <option value="UTC5">UTC-5</option>
+                            <option value="UTC4">UTC-4</option>
+                            <option value="UTC3">UTC-3</option>
+                            <option value="UTC2">UTC-2</option>
+                            <option value="UTC1">UTC-1</option>
+                            <option value="UTC0" selected>UTC</option>
+                            <option value="UTC-1">UTC+1</option>
+                            <option value="UTC-2">UTC+2</option>
+                            <option value="UTC-3">UTC+3</option>
+                            <option value="UTC-4">UTC+4</option>
+                            <option value="UTC-5">UTC+5</option>
+                            <option value="UTC-6">UTC+6</option>
+                            <option value="UTC-7">UTC+7</option>
+                            <option value="UTC-8">UTC+8</option>
+                            <option value="UTC-9">UTC+9</option>
+                            <option value="UTC-10">UTC+10</option>
+                            <option value="UTC-11">UTC+11</option>
+                            <option value="UTC-12">UTC+12</option>
+                            <option value="UTC-13">UTC+13</option>
+                            <option value="UTC-14">UTC+14</option>
+                        </select>
+                    </div>
+                    <button id="btn-sync-time" class="btn btn-full">Sync Time Now</button>
                 </div>
-                <button id="btn-sync-time" class="btn btn-full">Sync Time Now</button>
             </div>
 
             <!-- LED Settings -->
-            <div class="card">
+            <div class="card collapsible collapsed">
                 <h2>LED Configuration</h2>
-                <div class="form-group">
-                    <label>LED Type</label>
-                    <select id="led-type">
-                        <option value="0">PWM RGB (3-channel)</option>
-                        <option value="1">WS2811 Addressable</option>
-                    </select>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label>LED Type</label>
+                        <select id="led-type">
+                            <option value="0">PWM RGB (3-channel)</option>
+                            <option value="1">WS2811 Addressable</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="led-count-group" style="display:none">
+                        <label>Number of LEDs</label>
+                        <input type="number" id="led-count" min="1" max="300" value="30">
+                    </div>
+                    <div class="form-group" id="pwm-freq-group">
+                        <label>PWM Frequency (Hz)</label>
+                        <input type="range" id="pwm-frequency" min="100" max="500" value="200">
+                        <span id="pwm-frequency-val">200 Hz</span>
+                    </div>
+                    <div class="form-group">
+                        <label>Gamma Correction</label>
+                        <input type="range" id="gamma" min="10" max="40" value="22">
+                        <span id="gamma-val">2.2</span>
+                    </div>
                 </div>
-                <div class="form-group" id="led-count-group" style="display:none">
-                    <label>Number of LEDs</label>
-                    <input type="number" id="led-count" min="1" max="300" value="30">
-                </div>
-                <div class="form-group" id="pwm-freq-group">
-                    <label>PWM Frequency (Hz)</label>
-                    <input type="range" id="pwm-frequency" min="100" max="500" value="200">
-                    <span id="pwm-frequency-val">200 Hz</span>
-                </div>
-                <div class="form-group">
-                    <label>Gamma Correction</label>
-                    <input type="range" id="gamma" min="10" max="40" value="22">
-                    <span id="gamma-val">2.2</span>
+            </div>
+
+            <!-- Temperature Calibration -->
+            <div class="card collapsible collapsed">
+                <h2>Temperature Calibration</h2>
+                <div class="card-body">
+                    <p class="hint">Enter offset to add to each sensor reading. Use a reference thermometer to determine the error.</p>
+                    <div class="form-group">
+                        <label>Internal (NTC) offset (°C)</label>
+                        <input type="number" id="temp-offset-ntc" min="-5" max="5" step="0.1" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label>External 1 (DS18B20) offset (°C)</label>
+                        <input type="number" id="temp-offset-ds1" min="-5" max="5" step="0.1" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label>External 2 (DS18B20) offset (°C)</label>
+                        <input type="number" id="temp-offset-ds2" min="-5" max="5" step="0.1" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label>External 1 sensor name</label>
+                        <input type="text" id="temp-name-ds1" maxlength="16" placeholder="External 1">
+                    </div>
+                    <div class="form-group">
+                        <label>External 2 sensor name</label>
+                        <input type="text" id="temp-name-ds2" maxlength="16" placeholder="External 2">
+                    </div>
                 </div>
             </div>
 
             <!-- General Settings -->
-            <div class="card">
+            <div class="card collapsible collapsed">
                 <h2>General</h2>
-                <div class="form-group">
-                    <label>Max Brightness Limit</label>
-                    <input type="range" id="max-brightness" min="10" max="100" value="100">
-                    <span id="max-brightness-val">100%</span>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label>Max Brightness Limit</label>
+                        <input type="range" id="max-brightness" min="10" max="100" value="100">
+                        <span id="max-brightness-val">100%</span>
+                    </div>
+                    <button id="btn-save-settings" class="btn btn-primary btn-full">Save Settings</button>
                 </div>
-                <button id="btn-save-settings" class="btn btn-primary btn-full">Save Settings</button>
             </div>
 
             <!-- MQTT Settings -->
-            <div class="card">
+            <div class="card collapsible collapsed">
                 <h2>MQTT</h2>
-                <div class="form-group">
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="mqtt-enabled">
-                        Enable MQTT
-                    </label>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="mqtt-enabled">
+                            Enable MQTT
+                        </label>
+                    </div>
+                    <div id="mqtt-settings" style="display:none">
+                        <div class="form-group">
+                            <label>Broker URI</label>
+                            <input type="text" id="mqtt-broker" placeholder="mqtt://192.168.1.100:1883">
+                        </div>
+                        <div class="form-group">
+                            <label>Username (optional)</label>
+                            <input type="text" id="mqtt-username" placeholder="">
+                        </div>
+                        <div class="form-group">
+                            <label>Password (optional)</label>
+                            <input type="password" id="mqtt-password" placeholder="Leave blank to keep current">
+                        </div>
+                        <div class="form-group">
+                            <label>Topic Prefix</label>
+                            <input type="text" id="mqtt-prefix" placeholder="morninglight" maxlength="31">
+                        </div>
+                        <div class="form-group">
+                            <label>Device Name (HA display)</label>
+                            <input type="text" id="mqtt-device-name" placeholder="MorningLight" maxlength="31">
+                        </div>
+                        <div class="status-item" style="margin-top:10px">
+                            <span class="label">Status:</span>
+                            <span id="mqtt-status" class="value">--</span>
+                        </div>
+                    </div>
+                    <button id="btn-save-mqtt" class="btn btn-primary btn-full" style="margin-top:10px">Save MQTT</button>
                 </div>
-                <div id="mqtt-settings" style="display:none">
-                    <div class="form-group">
-                        <label>Broker URI</label>
-                        <input type="text" id="mqtt-broker" placeholder="mqtt://192.168.1.100:1883">
-                    </div>
-                    <div class="form-group">
-                        <label>Username (optional)</label>
-                        <input type="text" id="mqtt-username" placeholder="">
-                    </div>
-                    <div class="form-group">
-                        <label>Password (optional)</label>
-                        <input type="password" id="mqtt-password" placeholder="Leave blank to keep current">
-                    </div>
-                    <div class="form-group">
-                        <label>Topic Prefix</label>
-                        <input type="text" id="mqtt-prefix" placeholder="morninglight" maxlength="31">
-                    </div>
-                    <div class="form-group">
-                        <label>Device Name (HA display)</label>
-                        <input type="text" id="mqtt-device-name" placeholder="MorningLight" maxlength="31">
-                    </div>
-                    <div class="status-item" style="margin-top:10px">
-                        <span class="label">Status:</span>
-                        <span id="mqtt-status" class="value">--</span>
-                    </div>
-                </div>
-                <button id="btn-save-mqtt" class="btn btn-primary btn-full" style="margin-top:10px">Save MQTT</button>
             </div>
 
             <!-- Configuration Export/Import -->
-            <div class="card">
+            <div class="card collapsible collapsed">
                 <h2>Configuration</h2>
-                <p class="hint">Export or import device settings as a JSON file.</p>
-                <div class="btn-row">
-                    <button id="btn-export-config" class="btn btn-full">Export Config</button>
-                </div>
-                <div class="btn-row" style="margin-top:10px">
-                    <label class="btn btn-full" style="text-align:center;cursor:pointer">
-                        Import Config
-                        <input type="file" id="file-import-config" accept=".json,application/json,text/plain" style="display:none">
-                    </label>
+                <div class="card-body">
+                    <p class="hint">Export or import device settings as a JSON file.</p>
+                    <div class="btn-row">
+                        <button id="btn-export-config" class="btn btn-full">Export Config</button>
+                    </div>
+                    <div class="btn-row" style="margin-top:10px">
+                        <label class="btn btn-full" style="text-align:center;cursor:pointer">
+                            Import Config
+                            <input type="file" id="file-import-config" accept=".json,application/json,text/plain" style="display:none">
+                        </label>
+                    </div>
                 </div>
             </div>
 
-            <!-- System -->
+            <!-- System (not collapsible) -->
             <div class="card">
                 <h2>System</h2>
                 <button id="btn-reboot" class="btn btn-danger btn-full">Reboot Device</button>

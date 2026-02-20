@@ -49,6 +49,11 @@ void mqtt_manager_publish_state(void);
 void mqtt_manager_notify_light_changed(void);
 
 /**
+ * @brief Re-publish Home Assistant discovery payloads (e.g. after renaming sensors)
+ */
+void mqtt_manager_republish_discovery(void);
+
+/**
  * @brief Deinitialize MQTT manager
  */
 void mqtt_manager_deinit(void);

@@ -715,6 +715,46 @@ select {
     height: 100%;
 }
 
+/* Collapsible cards */
+.card.collapsible h2 {
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.card.collapsible h2::after {
+    content: '[-]';
+    font-size: 11px;
+    color: var(--muted);
+    flex-shrink: 0;
+}
+
+.card.collapsible.collapsed h2 {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.card.collapsible.collapsed h2::after {
+    content: '[+]';
+}
+
+.card-body {
+    overflow: hidden;
+    max-height: 2000px;
+    transition: max-height 0.35s ease-in, opacity 0.25s ease-in;
+    opacity: 1;
+}
+
+.card.collapsible.collapsed .card-body {
+    max-height: 0;
+    opacity: 0;
+    transition: max-height 0.25s ease-out, opacity 0.2s ease-out;
+}
+
 /* Dark mode banner */
 .dark-mode-banner {
     margin-top: 12px;

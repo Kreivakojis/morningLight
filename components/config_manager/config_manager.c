@@ -110,6 +110,15 @@ static void set_defaults(void)
 
     // Gamma correction
     config.gamma_x10 = 22;
+
+    // Temperature calibration offsets (0 = no correction)
+    config.temp_offset_ntc_x10 = 0;
+    config.temp_offset_ds1_x10 = 0;
+    config.temp_offset_ds2_x10 = 0;
+
+    // External sensor names (empty = use default label)
+    config.temp_name_ds1[0] = '\0';
+    config.temp_name_ds2[0] = '\0';
 }
 
 esp_err_t config_manager_init(void)
