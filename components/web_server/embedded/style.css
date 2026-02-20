@@ -38,6 +38,10 @@
     --border: var(--border-color);
 }
 
+html {
+    overflow-y: scroll;
+}
+
 body {
     font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
     background: var(--terminal-bg);
