@@ -5,6 +5,7 @@
 #include "driver/gpio.h"
 #include "led_strip.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "led_driver.h"
 #include "config_manager.h"
 
@@ -20,9 +21,25 @@ static float get_gamma(void) {
     return (g >= 10 && g <= 40) ? g / 10.0f : 2.2f;
 }
 
-static bool get_dither_enabled(void) {
+typedef struct {
+    bool enabled;
+    uint8_t freq_hz;            // How often the error-diffusion step updates
+    uint8_t max_brightness_pct; // Dithering only applies at or below this brightness
+} dither_settings_t;
+
+static dither_settings_t get_dither_settings(void) {
     device_config_t *cfg = config_manager_get();
-    return cfg ? cfg->dither_enabled : false;
+    if (!cfg) {
+        return (dither_settings_t){ .enabled = false, .freq_hz = 10, .max_brightness_pct = 100 };
+    }
+    uint8_t freq = cfg->dither_freq_hz;
+    if (freq < 1) freq = 1;
+    if (freq > 60) freq = 60;
+    return (dither_settings_t){
+        .enabled = cfg->dither_enabled,
+        .freq_hz = freq,
+        .max_brightness_pct = cfg->dither_max_brightness_pct,
+    };
 }
 
 // Per-instance state
@@ -38,12 +55,21 @@ typedef struct {
 
     // Temporal dithering error accumulators (one slot per LED per channel).
     // Carries the rounding error from each 8-bit quantization into the next
-    // frame's target so consecutive frames alternate between adjacent output
-    // levels in a ratio that averages to the true fractional brightness,
-    // instead of visibly snapping between them. See set_pixel_brightnesses_impl().
+    // dither step's target so consecutive steps alternate between adjacent
+    // output levels in a ratio that averages to the true fractional
+    // brightness, instead of visibly snapping between them. See
+    // set_pixel_brightnesses_impl().
     float dither_err_r[MAX_LED_COUNT];
     float dither_err_g[MAX_LED_COUNT];
     float dither_err_b[MAX_LED_COUNT];
+
+    // Last dithered output held between update steps when the configured
+    // dither frequency is slower than the animation frame rate, and the
+    // wall-clock time of that last step.
+    uint8_t dither_hold_r[MAX_LED_COUNT];
+    uint8_t dither_hold_g[MAX_LED_COUNT];
+    uint8_t dither_hold_b[MAX_LED_COUNT];
+    int64_t last_dither_step_us;
 } ws2811_state_t;
 
 static ws2811_state_t ws2811_state[WS2811_INSTANCES] = {0};
@@ -198,6 +224,10 @@ static esp_err_t init_impl(int inst, gpio_num_t data_gpio, gpio_num_t enable_gpi
     memset(s->dither_err_r, 0, sizeof(s->dither_err_r));
     memset(s->dither_err_g, 0, sizeof(s->dither_err_g));
     memset(s->dither_err_b, 0, sizeof(s->dither_err_b));
+    memset(s->dither_hold_r, 0, sizeof(s->dither_hold_r));
+    memset(s->dither_hold_g, 0, sizeof(s->dither_hold_g));
+    memset(s->dither_hold_b, 0, sizeof(s->dither_hold_b));
+    s->last_dither_step_us = 0;
 
     led_strip_clear(s->strip);
 
@@ -250,7 +280,19 @@ static void set_pixel_brightnesses_impl(int inst, const uint8_t *brightness_arra
     float gamma_r = powf(s->r / 255.0f, gamma) * 255.0f;
     float gamma_g = powf(s->g / 255.0f, gamma) * 255.0f;
     float gamma_b = powf(s->b / 255.0f, gamma) * 255.0f;
-    bool dither = get_dither_enabled();
+    dither_settings_t dset = get_dither_settings();
+
+    // Gate how often the error-diffusion step actually advances. Holding the
+    // last dithered value between steps (rather than re-running the
+    // diffusion every animation frame, ~30Hz) lets the toggle rate between
+    // adjacent 8-bit levels be slowed down independently of the animation's
+    // own frame rate.
+    int64_t now_us = esp_timer_get_time();
+    int64_t period_us = 1000000LL / dset.freq_hz;
+    bool dither_step = (now_us - s->last_dither_step_us) >= period_us;
+    if (dither_step) {
+        s->last_dither_step_us = now_us;
+    }
 
     for (uint16_t i = 0; i < count; i++) {
         uint8_t brightness = brightness_array[i];
@@ -258,14 +300,32 @@ static void set_pixel_brightnesses_impl(int inst, const uint8_t *brightness_arra
 
         float scale = brightness / 100.0f;
         uint8_t out_r, out_g, out_b;
-        if (dither) {
-            out_r = dither_quantize(gamma_r * scale, &s->dither_err_r[i]);
-            out_g = dither_quantize(gamma_g * scale, &s->dither_err_g[i]);
-            out_b = dither_quantize(gamma_b * scale, &s->dither_err_b[i]);
+
+        // Dithering is only useful at low output levels, where an 8-bit
+        // step is a large fraction of the signal — confine it to LEDs at or
+        // below the configured brightness ceiling, plain-rounding the rest.
+        if (dset.enabled && brightness <= dset.max_brightness_pct) {
+            if (dither_step) {
+                out_r = dither_quantize(gamma_r * scale, &s->dither_err_r[i]);
+                out_g = dither_quantize(gamma_g * scale, &s->dither_err_g[i]);
+                out_b = dither_quantize(gamma_b * scale, &s->dither_err_b[i]);
+                s->dither_hold_r[i] = out_r;
+                s->dither_hold_g[i] = out_g;
+                s->dither_hold_b[i] = out_b;
+            } else {
+                out_r = s->dither_hold_r[i];
+                out_g = s->dither_hold_g[i];
+                out_b = s->dither_hold_b[i];
+            }
         } else {
             out_r = (uint8_t)(gamma_r * scale + 0.5f);
             out_g = (uint8_t)(gamma_g * scale + 0.5f);
             out_b = (uint8_t)(gamma_b * scale + 0.5f);
+            // Reset so a later re-entry into the dithered brightness range
+            // starts clean instead of carrying stale error/hold state.
+            s->dither_err_r[i] = 0.0f;
+            s->dither_err_g[i] = 0.0f;
+            s->dither_err_b[i] = 0.0f;
         }
 
         // WS2811 color order correction: swap G and B
@@ -278,6 +338,9 @@ static void set_pixel_brightnesses_impl(int inst, const uint8_t *brightness_arra
         s->dither_err_r[i] = 0.0f;
         s->dither_err_g[i] = 0.0f;
         s->dither_err_b[i] = 0.0f;
+        s->dither_hold_r[i] = 0;
+        s->dither_hold_g[i] = 0;
+        s->dither_hold_b[i] = 0;
     }
 
     led_strip_refresh(s->strip);

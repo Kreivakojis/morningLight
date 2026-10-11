@@ -137,6 +137,29 @@ menu "MorningLight Configuration"
                 temperature, but subtly alters wave animation timing.
                 User-toggleable at runtime via the Settings page.
 
+        config ML_LED_DITHER_FREQ_HZ_DEFAULT
+            int "Temporal Dithering Update Frequency (Hz)"
+            default 10
+            range 1 60
+            help
+                How often the dithering error-diffusion step updates, in Hz.
+                Lower values reduce how often output can toggle between
+                adjacent 8-bit levels (less shimmer, coarser temporal
+                resolution); higher values approach the animation frame
+                rate (~30 Hz) for the smoothest time-averaged brightness.
+                Only takes effect when dithering is enabled.
+
+        config ML_LED_DITHER_MAX_BRIGHTNESS_PCT_DEFAULT
+            int "Temporal Dithering Brightness Ceiling (%)"
+            default 50
+            range 0 100
+            help
+                Dithering only applies to LEDs whose current animated
+                brightness is at or below this percentage; above it, output
+                is plain-rounded with no dithering. Keeps dithering confined
+                to the low end where 8-bit quantization stepping is
+                actually visible.
+
         config ML_LED_PWM_FREQ_HZ
             int "PWM Frequency (Hz)"
             default 4000

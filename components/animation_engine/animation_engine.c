@@ -28,7 +28,8 @@ extern int time_manager_get_minute(void);
 // External functions
 extern void color_utils_kelvin_to_rgb(uint16_t kelvin, uint8_t *r, uint8_t *g, uint8_t *b);
 extern void wave_generator_compute(uint8_t *brightness_out, uint16_t led_count,
-                                   const animation_preset_t *preset, float time_sec);
+                                   const animation_preset_t *preset, float time_sec,
+                                   const wave_shape_t *shape);
 
 // Default update interval if Kconfig not defined
 #ifndef CONFIG_ML_ANIM_UPDATE_INTERVAL_MS
@@ -76,12 +77,20 @@ static void animation_task(void *arg)
         // Get current preset (may have been updated)
         preset = &config->animation_presets[anim_state.active_preset];
 
+        // Resolve waveform shape for this preset (may have been updated)
+        wave_shape_t shape = {
+            .kind = config->anim_waveform[anim_state.active_preset],
+            .k = config->anim_wave_k_x10[anim_state.active_preset] / 10.0f,
+            .i = config->anim_wave_i_x10[anim_state.active_preset] / 10.0f,
+        };
+
         // Compute per-LED brightness values
         wave_generator_compute(
             anim_state.brightness_buffer,
             anim_state.led_count,
             preset,
-            anim_state.time_offset
+            anim_state.time_offset,
+            &shape
         );
 
         // Apply global brightness limit

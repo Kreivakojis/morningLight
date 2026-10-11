@@ -127,6 +127,17 @@ typedef struct {
 
     // WS2811 animated-pixel-path temporal dithering (added at end for NVS compat)
     bool dither_enabled;                // Error-diffusion dithering on the animation/wave pixel path
+    uint8_t dither_freq_hz;             // How often the dither step updates, 1-60 Hz
+    uint8_t dither_max_brightness_pct;  // Dithering only applies at or below this brightness, 0-100
+
+    // Per-preset waveform shape (added at end for NVS compat). Kept as parallel
+    // arrays rather than fields on animation_preset_t, because that struct is
+    // embedded mid-struct (animation_presets[]) above — growing it would shift
+    // every field declared after it and break NVS compat for all of them at
+    // once, not just this one.
+    uint8_t anim_waveform[ANIMATION_MAX_PRESETS];   // 0 = Sine, 1 = Hyperbolic AC
+    uint8_t anim_wave_k_x10[ANIMATION_MAX_PRESETS]; // Zero-crossing sharpness * 10, range 5-200 (k: 0.5-20.0)
+    uint8_t anim_wave_i_x10[ANIMATION_MAX_PRESETS]; // Crest shape * 10, range 2-40 (i: 0.2-4.0; i=2.0 -> unity peak)
 } device_config_t;
 
 /**

@@ -21,7 +21,7 @@ extern float sunrise_curve_apply(sunrise_curve_t curve, float t);
 extern uint16_t sunrise_color_interpolate(float progress, uint16_t start_temp, uint16_t end_temp);
 
 // External wave generator function for animated sunrise
-extern void wave_generator_compute_with_base(uint8_t *, uint16_t, const animation_preset_t *, float, int16_t, float);
+extern void wave_generator_compute_with_base(uint8_t *, uint16_t, const animation_preset_t *, float, int16_t, float, const wave_shape_t *);
 
 // External color utility function
 extern void color_utils_kelvin_to_rgb(uint16_t kelvin, uint8_t *r, uint8_t *g, uint8_t *b);
@@ -106,6 +106,14 @@ static void update_leds(float progress)
         // refresh before set_pixel_brightnesses() applies the wave, causing flicker.
         float elapsed_sec = ((xTaskGetTickCount() * portTICK_PERIOD_MS) - state.start_time_ms) / 1000.0f;
 
+        // Resolve waveform shape for this preset
+        device_config_t *config = config_manager_get();
+        wave_shape_t shape = {
+            .kind = config->anim_waveform[state.animation_preset_id],
+            .k = config->anim_wave_k_x10[state.animation_preset_id] / 10.0f,
+            .i = config->anim_wave_i_x10[state.animation_preset_id] / 10.0f,
+        };
+
         // Compute wave with ramped base and scaled amplitude
         wave_generator_compute_with_base(
             state.brightness_buffer,
@@ -113,7 +121,8 @@ static void update_leds(float progress)
             &state.preset_copy,
             elapsed_sec,
             ramp_brightness,    // Override base with ramping value
-            curved_progress     // Scale amplitude with ramp progress
+            curved_progress,    // Scale amplitude with ramp progress
+            &shape
         );
 
         led_controller_set_pixel_brightnesses(state.brightness_buffer, state.led_count);

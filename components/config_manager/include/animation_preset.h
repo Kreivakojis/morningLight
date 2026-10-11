@@ -25,6 +25,28 @@ typedef struct {
     uint16_t color_temp;     /**< 2000-6500K */
 } animation_preset_t;
 
+/**
+ * @brief Waveform shape enum, shared between wave_generator.c and its callers
+ */
+typedef enum {
+    WAVE_SHAPE_SINE = 0,
+    WAVE_SHAPE_HYPERBOLIC_AC = 1,
+    WAVE_SHAPE_HYPERBOLIC_PULSE = 2,  /**< Hyperbolic AC, full-wave rectified (no negative lobe) */
+} wave_shape_kind_t;
+
+/**
+ * @brief Raw wave shape, resolved from config_manager's per-preset
+ * anim_waveform/anim_wave_k_x10/anim_wave_i_x10 arrays (kept separate from
+ * animation_preset_t, since that struct is embedded mid-struct in
+ * device_config_t and can't grow without breaking NVS compat for every
+ * field declared after it)
+ */
+typedef struct {
+    uint8_t kind;  /**< wave_shape_kind_t */
+    float k;       /**< Hyperbolic AC: zero-crossing sharpness, 0.5-20.0 */
+    float i;       /**< Hyperbolic AC: crest shape, 0.2-4.0 (2.0 = unity peak) */
+} wave_shape_t;
+
 #ifdef __cplusplus
 }
 #endif

@@ -325,6 +325,8 @@ static esp_err_t api_config_get_handler(httpd_req_t *req)
 
     // WS2811 animated-pixel-path temporal dithering (optional, experimental)
     cJSON_AddBoolToObject(json, "dither_enabled", config->dither_enabled);
+    cJSON_AddNumberToObject(json, "dither_freq_hz", config->dither_freq_hz);
+    cJSON_AddNumberToObject(json, "dither_max_brightness_pct", config->dither_max_brightness_pct);
 
     // WiFi (don't expose password)
     cJSON *wifi = cJSON_AddObjectToObject(json, "wifi");
@@ -413,10 +415,24 @@ static esp_err_t api_config_post_handler(httpd_req_t *req)
     cal = cJSON_GetObjectItem(json, "dc_voltage_scale");
     if (cJSON_IsNumber(cal)) config->dc_voltage_scale = (float)cal->valuedouble;
 
-    // WS2811 temporal dithering toggle (applied live, no restart needed)
+    // WS2811 temporal dithering settings (applied live, no restart needed)
     cJSON *dither = cJSON_GetObjectItem(json, "dither_enabled");
     if (cJSON_IsBool(dither)) {
         config->dither_enabled = cJSON_IsTrue(dither);
+    }
+    cJSON *dither_freq = cJSON_GetObjectItem(json, "dither_freq_hz");
+    if (cJSON_IsNumber(dither_freq)) {
+        int v = (int)dither_freq->valuedouble;
+        if (v < 1) v = 1;
+        if (v > 60) v = 60;
+        config->dither_freq_hz = (uint8_t)v;
+    }
+    cJSON *dither_max = cJSON_GetObjectItem(json, "dither_max_brightness_pct");
+    if (cJSON_IsNumber(dither_max)) {
+        int v = (int)dither_max->valuedouble;
+        if (v < 0) v = 0;
+        if (v > 100) v = 100;
+        config->dither_max_brightness_pct = (uint8_t)v;
     }
 
     cJSON *gamma = cJSON_GetObjectItem(json, "gamma");
@@ -688,6 +704,9 @@ static esp_err_t api_animation_presets_get_handler(httpd_req_t *req)
         cJSON_AddNumberToObject(preset, "base_brightness", p->base_brightness);
         cJSON_AddNumberToObject(preset, "variation", p->variation);
         cJSON_AddNumberToObject(preset, "color_temp", p->color_temp);
+        cJSON_AddNumberToObject(preset, "waveform", config->anim_waveform[i]);
+        cJSON_AddNumberToObject(preset, "wave_k", config->anim_wave_k_x10[i] / 10.0);
+        cJSON_AddNumberToObject(preset, "wave_i", config->anim_wave_i_x10[i] / 10.0);
         cJSON_AddItemToArray(presets, preset);
     }
 
@@ -726,6 +745,8 @@ static esp_err_t api_animation_presets_post_handler(httpd_req_t *req)
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to get preset");
         return ESP_FAIL;
     }
+
+    device_config_t *config = config_manager_get();
 
     // Update preset fields
     cJSON *name = cJSON_GetObjectItem(json, "name");
@@ -771,6 +792,28 @@ static esp_err_t api_animation_presets_post_handler(httpd_req_t *req)
         preset->color_temp = (uint16_t)color_temp->valuedouble;
         if (preset->color_temp < 2000) preset->color_temp = 2000;
         if (preset->color_temp > 6500) preset->color_temp = 6500;
+    }
+
+    cJSON *waveform = cJSON_GetObjectItem(json, "waveform");
+    if (cJSON_IsNumber(waveform)) {
+        int v = (int)waveform->valuedouble;
+        config->anim_waveform[id] = (v == WAVE_SHAPE_HYPERBOLIC_AC || v == WAVE_SHAPE_HYPERBOLIC_PULSE) ? (uint8_t)v : WAVE_SHAPE_SINE;
+    }
+
+    cJSON *wave_k = cJSON_GetObjectItem(json, "wave_k");
+    if (cJSON_IsNumber(wave_k)) {
+        int v = (int)(wave_k->valuedouble * 10.0 + 0.5);
+        if (v < 5) v = 5;
+        if (v > 200) v = 200;
+        config->anim_wave_k_x10[id] = (uint8_t)v;
+    }
+
+    cJSON *wave_i = cJSON_GetObjectItem(json, "wave_i");
+    if (cJSON_IsNumber(wave_i)) {
+        int v = (int)(wave_i->valuedouble * 10.0 + 0.5);
+        if (v < 2) v = 2;
+        if (v > 40) v = 40;
+        config->anim_wave_i_x10[id] = (uint8_t)v;
     }
 
     config_manager_save();
@@ -982,6 +1025,8 @@ static const char *config_export_header =
     "//   dc_current_offset_v  - Op-amp output voltage at zero current\n"
     "//   dc_voltage_scale     - Volts-in per Volt-at-ADC (divider inverse)\n"
     "//   dither_enabled       - Temporal dithering on animated WS2811 pixel path, true/false (experimental)\n"
+    "//   dither_freq_hz       - Dither update frequency in Hz, 1-60 (default 10)\n"
+    "//   dither_max_brightness_pct - Dithering only below this brightness %, 0-100 (default 50)\n"
     "//\n"
     "//   alarms (array of 8 slots):\n"
     "//     enabled          - true/false\n"
@@ -1005,6 +1050,9 @@ static const char *config_export_header =
     "//     base_brightness  - 0-100 (%) midpoint\n"
     "//     variation        - 0-100 (%) organic noise\n"
     "//     color_temp       - 2000-6500 Kelvin\n"
+    "//     waveform         - 0=Sine, 1=Hyperbolic AC, 2=Hyperbolic Pulse (rectified, no negative lobe)\n"
+    "//     wave_k           - Hyperbolic sharpness (AC/Pulse), 0.5-20.0 (default 10.0)\n"
+    "//     wave_i           - Hyperbolic crest shape (AC/Pulse), 0.2-4.0 (default 2.0 = unity peak)\n"
     "//\n"
     "//   dark_mode (array of 3 slots):\n"
     "//     enabled          - true/false\n"
@@ -1044,6 +1092,8 @@ static esp_err_t api_config_export_handler(httpd_req_t *req)
     cJSON_AddNumberToObject(json, "dc_current_offset_v", config->dc_current_offset_v);
     cJSON_AddNumberToObject(json, "dc_voltage_scale", config->dc_voltage_scale);
     cJSON_AddBoolToObject(json, "dither_enabled", config->dither_enabled);
+    cJSON_AddNumberToObject(json, "dither_freq_hz", config->dither_freq_hz);
+    cJSON_AddNumberToObject(json, "dither_max_brightness_pct", config->dither_max_brightness_pct);
 
     // Alarms (all 8 slots)
     cJSON *alarms = cJSON_AddArrayToObject(json, "alarms");
@@ -1077,6 +1127,9 @@ static esp_err_t api_config_export_handler(httpd_req_t *req)
         cJSON_AddNumberToObject(item, "base_brightness", p->base_brightness);
         cJSON_AddNumberToObject(item, "variation", p->variation);
         cJSON_AddNumberToObject(item, "color_temp", p->color_temp);
+        cJSON_AddNumberToObject(item, "waveform", config->anim_waveform[i]);
+        cJSON_AddNumberToObject(item, "wave_k", config->anim_wave_k_x10[i] / 10.0);
+        cJSON_AddNumberToObject(item, "wave_i", config->anim_wave_i_x10[i] / 10.0);
         cJSON_AddItemToArray(presets, item);
     }
 
@@ -1228,6 +1281,20 @@ static esp_err_t api_config_import_handler(httpd_req_t *req)
     if (cJSON_IsBool(dither_i)) {
         config->dither_enabled = cJSON_IsTrue(dither_i);
     }
+    cJSON *dither_freq_i = cJSON_GetObjectItem(json, "dither_freq_hz");
+    if (cJSON_IsNumber(dither_freq_i)) {
+        int v = (int)dither_freq_i->valuedouble;
+        if (v < 1) v = 1;
+        if (v > 60) v = 60;
+        config->dither_freq_hz = (uint8_t)v;
+    }
+    cJSON *dither_max_i = cJSON_GetObjectItem(json, "dither_max_brightness_pct");
+    if (cJSON_IsNumber(dither_max_i)) {
+        int v = (int)dither_max_i->valuedouble;
+        if (v < 0) v = 0;
+        if (v > 100) v = 100;
+        config->dither_max_brightness_pct = (uint8_t)v;
+    }
 
     cJSON *gamma_item = cJSON_GetObjectItem(json, "gamma");
     if (cJSON_IsNumber(gamma_item)) {
@@ -1360,6 +1427,24 @@ static esp_err_t api_config_import_handler(httpd_req_t *req)
 
             v = cJSON_GetObjectItem(item, "color_temp");
             if (cJSON_IsNumber(v)) { uint16_t val = (uint16_t)v->valuedouble; if (val >= 2000 && val <= 6500) p->color_temp = val; }
+
+            v = cJSON_GetObjectItem(item, "waveform");
+            if (cJSON_IsNumber(v)) {
+                int val = (int)v->valuedouble;
+                config->anim_waveform[i] = (val == WAVE_SHAPE_HYPERBOLIC_AC || val == WAVE_SHAPE_HYPERBOLIC_PULSE) ? (uint8_t)val : WAVE_SHAPE_SINE;
+            }
+
+            v = cJSON_GetObjectItem(item, "wave_k");
+            if (cJSON_IsNumber(v)) {
+                int val = (int)(v->valuedouble * 10.0 + 0.5);
+                if (val >= 5 && val <= 200) config->anim_wave_k_x10[i] = (uint8_t)val;
+            }
+
+            v = cJSON_GetObjectItem(item, "wave_i");
+            if (cJSON_IsNumber(v)) {
+                int val = (int)(v->valuedouble * 10.0 + 0.5);
+                if (val >= 2 && val <= 40) config->anim_wave_i_x10[i] = (uint8_t)val;
+            }
         }
     }
 

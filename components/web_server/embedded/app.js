@@ -461,6 +461,14 @@ $('#gamma').addEventListener('input', (e) => {
     $('#gamma-val').textContent = (e.target.value / 10).toFixed(1);
 });
 
+$('#dither-freq-hz').addEventListener('input', (e) => {
+    $('#dither-freq-hz-val').textContent = `${e.target.value} Hz`;
+});
+
+$('#dither-max-brightness').addEventListener('input', (e) => {
+    $('#dither-max-brightness-val').textContent = `${e.target.value}%`;
+});
+
 // LED output enable toggles: all three can be populated simultaneously,
 // each checkbox just enables/disables its own sibling input
 function setupOutputToggle(checkboxId, inputId) {
@@ -494,7 +502,9 @@ $('#btn-save-settings').addEventListener('click', async () => {
         dc_current_scale: parseFloat($('#dc-current-scale').value) || 0,
         dc_current_offset_v: parseFloat($('#dc-current-offset-v').value) || 0,
         dc_voltage_scale: parseFloat($('#dc-voltage-scale').value) || 0,
-        dither_enabled: $('#dither-enabled').checked
+        dither_enabled: $('#dither-enabled').checked,
+        dither_freq_hz: parseInt($('#dither-freq-hz').value),
+        dither_max_brightness_pct: parseInt($('#dither-max-brightness').value)
     };
 
     const result = await api.post('/api/config', config);
@@ -537,6 +547,12 @@ async function loadConfig() {
 
         // WS2811 temporal dithering (optional, experimental)
         $('#dither-enabled').checked = !!config.dither_enabled;
+        const ditherFreq = config.dither_freq_hz !== undefined ? config.dither_freq_hz : 10;
+        $('#dither-freq-hz').value = ditherFreq;
+        $('#dither-freq-hz-val').textContent = `${ditherFreq} Hz`;
+        const ditherMax = config.dither_max_brightness_pct !== undefined ? config.dither_max_brightness_pct : 50;
+        $('#dither-max-brightness').value = ditherMax;
+        $('#dither-max-brightness-val').textContent = `${ditherMax}%`;
 
         // Gamma correction
         const gammaVal = config.gamma !== undefined ? Math.round(config.gamma * 10) : 22;
@@ -609,19 +625,49 @@ function colorTempToSlider(k) {
     return Math.round(100 * Math.log(k / 2000) / Math.log(3.25));
 }
 
+// Base brightness: 0-100%, slider 0-100 but "zoomed in" on the bottom 20%
+// (slider 0-50 covers 0-20%, slider 50-100 covers 20-100%) for finer control
+// near dark, where small brightness changes matter most and a uniform
+// 0-100 slider only had 3 reachable values (0/10/20) in that range.
+function baseBrightnessFromSlider(pos) {
+    if (pos <= 50) {
+        return Math.round(pos * 20 / 50);
+    }
+    return Math.round(20 + (pos - 50) * 80 / 50);
+}
+function baseBrightnessToSlider(pct) {
+    if (pct <= 20) {
+        return Math.round(pct * 50 / 20);
+    }
+    return Math.round(50 + (pct - 20) * 50 / 80);
+}
+
+function updateWaveShapeVisibility() {
+    const waveformVal = parseInt($('#anim-waveform').value);
+    const isHyperbolic = waveformVal === 1 || waveformVal === 2;
+    $('#anim-wave-k-group').style.display = isHyperbolic ? 'block' : 'none';
+    $('#anim-wave-i-group').style.display = isHyperbolic ? 'block' : 'none';
+}
+
 function loadPresetIntoForm(id) {
     const preset = animationPresets.find(p => p.id === id);
     if (!preset) return;
 
     $('#anim-name').value = preset.name;
+    $('#anim-waveform').value = preset.waveform || 0;
+    $('#anim-wave-k').value = Math.round((preset.wave_k !== undefined ? preset.wave_k : 10.0) * 10);
+    $('#anim-wave-k-val').textContent = (preset.wave_k !== undefined ? preset.wave_k : 10.0).toFixed(1);
+    $('#anim-wave-i').value = Math.round((preset.wave_i !== undefined ? preset.wave_i : 2.0) * 10);
+    $('#anim-wave-i-val').textContent = (preset.wave_i !== undefined ? preset.wave_i : 2.0).toFixed(1);
+    updateWaveShapeVisibility();
     $('#anim-wavelength').value = preset.wavelength;
     $('#anim-wavelength-val').textContent = preset.wavelength;
     $('#anim-amplitude').value = Math.round(preset.amplitude / 10) * 10;
     $('#anim-amplitude-val').textContent = `${Math.round(preset.amplitude / 10) * 10}%`;
     $('#anim-speed').value = speedToSlider(preset.speed);
     $('#anim-speed-val').textContent = `${formatSpeed(preset.speed)} Hz`;
-    $('#anim-base').value = Math.round(preset.base_brightness / 10) * 10;
-    $('#anim-base-val').textContent = `${Math.round(preset.base_brightness / 10) * 10}%`;
+    $('#anim-base').value = baseBrightnessToSlider(preset.base_brightness);
+    $('#anim-base-val').textContent = `${preset.base_brightness}%`;
     $('#anim-variation').value = Math.round(preset.variation / 10) * 10;
     $('#anim-variation-val').textContent = `${Math.round(preset.variation / 10) * 10}%`;
     $('#anim-color-temp').value = colorTempToSlider(preset.color_temp);
@@ -630,6 +676,16 @@ function loadPresetIntoForm(id) {
 
 $('#anim-preset').addEventListener('change', (e) => {
     loadPresetIntoForm(parseInt(e.target.value));
+});
+
+$('#anim-waveform').addEventListener('change', updateWaveShapeVisibility);
+
+$('#anim-wave-k').addEventListener('input', (e) => {
+    $('#anim-wave-k-val').textContent = (parseInt(e.target.value) / 10).toFixed(1);
+});
+
+$('#anim-wave-i').addEventListener('input', (e) => {
+    $('#anim-wave-i-val').textContent = (parseInt(e.target.value) / 10).toFixed(1);
 });
 
 // Wave preview
@@ -677,14 +733,24 @@ $('#anim-preset').addEventListener('change', (e) => {
         canvas.height = r.height * (window.devicePixelRatio || 1);
     }
 
+    // Hyperbolic AC wave, matching wave_generator.c exactly:
+    // sinh(k * (i/pi) * asin(sin(x))) / sinh(k)
+    function hyperbolicAcWave(x, k, i) {
+        var t = Math.asin(Math.sin(x));
+        return Math.sinh(k * (i / Math.PI) * t) / Math.sinh(Math.max(k, 0.01));
+    }
+
     function getParams() {
         return {
             wavelength: parseFloat($('#anim-wavelength').value),
             amplitude: parseInt($('#anim-amplitude').value) / 100,
             speed: speedFromSlider(parseInt($('#anim-speed').value)),
-            base: parseInt($('#anim-base').value) / 100,
+            base: baseBrightnessFromSlider(parseInt($('#anim-base').value)) / 100,
             variation: parseInt($('#anim-variation').value) / 100,
-            colorTemp: colorTempFromSlider(parseInt($('#anim-color-temp').value))
+            colorTemp: colorTempFromSlider(parseInt($('#anim-color-temp').value)),
+            waveform: parseInt($('#anim-waveform').value),
+            waveK: parseInt($('#anim-wave-k').value) / 10,
+            waveI: parseInt($('#anim-wave-i').value) / 10
         };
     }
 
@@ -728,7 +794,15 @@ $('#anim-preset').addEventListener('change', (e) => {
         for (var i = 0; i <= steps; i++) {
             var x = (i / steps) * w;
             var led = (i / steps) * 60;
-            var wave = Math.sin(led * spatialFreq + temporalPhase);
+            var phase = led * spatialFreq + temporalPhase;
+            var wave;
+            if (p.waveform === 1) {
+                wave = hyperbolicAcWave(phase, p.waveK, p.waveI);
+            } else if (p.waveform === 2) {
+                wave = Math.abs(hyperbolicAcWave(phase, p.waveK, p.waveI));
+            } else {
+                wave = Math.sin(phase);
+            }
             var noiseX = led * 0.1 + t * 0.3;
             var variation = 1.0 + (valueNoise(noiseX) - 0.5) * 2.0 * variStrength;
             var val = p.base + p.amplitude * 0.5 * wave * variation;
@@ -762,7 +836,8 @@ $('#anim-speed').addEventListener('input', (e) => {
 });
 
 $('#anim-base').addEventListener('input', (e) => {
-    $('#anim-base-val').textContent = `${e.target.value}%`;
+    const pct = baseBrightnessFromSlider(parseInt(e.target.value));
+    $('#anim-base-val').textContent = `${pct}%`;
 });
 
 $('#anim-variation').addEventListener('input', (e) => {
@@ -783,9 +858,12 @@ $('#anim-save').addEventListener('click', async () => {
         wavelength: parseFloat($('#anim-wavelength').value),
         amplitude: parseInt($('#anim-amplitude').value),
         speed: parseFloat(speedFromSlider(parseInt($('#anim-speed').value)).toFixed(3)),
-        base_brightness: parseInt($('#anim-base').value),
+        base_brightness: baseBrightnessFromSlider(parseInt($('#anim-base').value)),
         variation: parseInt($('#anim-variation').value),
-        color_temp: colorTempFromSlider(parseInt($('#anim-color-temp').value))
+        color_temp: colorTempFromSlider(parseInt($('#anim-color-temp').value)),
+        waveform: parseInt($('#anim-waveform').value),
+        wave_k: parseInt($('#anim-wave-k').value) / 10,
+        wave_i: parseInt($('#anim-wave-i').value) / 10
     };
 
     const result = await api.post('/api/animation/presets', preset);

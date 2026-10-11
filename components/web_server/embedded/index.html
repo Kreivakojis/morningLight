@@ -267,6 +267,26 @@
                     <input type="text" id="anim-name" maxlength="11" value="Gentle">
                 </div>
                 <div class="form-group">
+                    <label>Waveform</label>
+                    <select id="anim-waveform">
+                        <option value="0">Sine</option>
+                        <option value="1">Hyperbolic AC</option>
+                        <option value="2">Hyperbolic Pulse</option>
+                    </select>
+                </div>
+                <div class="form-group" id="anim-wave-k-group" style="display:none">
+                    <label>Zero-Crossing Sharpness (k)</label>
+                    <input type="range" id="anim-wave-k" min="5" max="200" value="100">
+                    <span id="anim-wave-k-val">10.0</span>
+                    <p class="hint">Low = gentler, sine-like. High = narrow spikes with long flat zero regions.</p>
+                </div>
+                <div class="form-group" id="anim-wave-i-group" style="display:none">
+                    <label>Crest Shape (i)</label>
+                    <input type="range" id="anim-wave-i" min="2" max="40" value="20">
+                    <span id="anim-wave-i-val">2.0</span>
+                    <p class="hint">2.0 = spikes peak at full amplitude. Above 2.0, spikes overshoot and flat-top; below 2.0, spikes stay shorter than full amplitude.</p>
+                </div>
+                <div class="form-group">
                     <label>Wavelength (LEDs)</label>
                     <input type="range" id="anim-wavelength" min="2" max="100" value="30">
                     <span id="anim-wavelength-val">30</span>
@@ -283,8 +303,9 @@
                 </div>
                 <div class="form-group">
                     <label>Base Brightness</label>
-                    <input type="range" id="anim-base" min="0" max="100" step="10" value="50">
+                    <input type="range" id="anim-base" min="0" max="100" step="1" value="69">
                     <span id="anim-base-val">50%</span>
+                    <p class="hint">The first half of the slider covers 0-20% for finer control near dark; the second half covers 20-100%.</p>
                 </div>
                 <div class="form-group">
                     <label>Variation</label>
@@ -393,6 +414,18 @@
                     <div class="form-group">
                         <label><input type="checkbox" id="dither-enabled"> Temporal Dithering (experimental)</label>
                         <p class="hint">Smooths 8-bit stepping on the animated strip at low brightness/warm color, but subtly alters wave animation timing. Off by default.</p>
+                    </div>
+                    <div class="form-group">
+                        <label>Dither Update Frequency</label>
+                        <input type="range" id="dither-freq-hz" min="1" max="60" value="10">
+                        <span id="dither-freq-hz-val">10 Hz</span>
+                        <p class="hint">How often the dither step updates. Lower = slower toggling between adjacent output levels (less shimmer); higher approaches the ~30 Hz animation frame rate.</p>
+                    </div>
+                    <div class="form-group">
+                        <label>Dither Brightness Ceiling</label>
+                        <input type="range" id="dither-max-brightness" min="0" max="100" value="50">
+                        <span id="dither-max-brightness-val">50%</span>
+                        <p class="hint">Dithering only applies to LEDs at or below this brightness. Above it, output is plain-rounded with no dithering.</p>
                     </div>
                 </div>
             </div>

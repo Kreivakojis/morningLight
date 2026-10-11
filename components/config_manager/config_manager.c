@@ -146,6 +146,16 @@ static void set_defaults(void)
 #else
     config.dither_enabled = false;
 #endif
+    config.dither_freq_hz = CONFIG_ML_LED_DITHER_FREQ_HZ_DEFAULT;
+    config.dither_max_brightness_pct = CONFIG_ML_LED_DITHER_MAX_BRIGHTNESS_PCT_DEFAULT;
+
+    // Per-preset waveform shape (Sine, with neutral Hyperbolic AC params
+    // ready if the user switches a preset to that waveform)
+    for (int i = 0; i < ANIMATION_MAX_PRESETS; i++) {
+        config.anim_waveform[i] = 0;      // Sine
+        config.anim_wave_k_x10[i] = 100;  // k = 10.0
+        config.anim_wave_i_x10[i] = 20;   // i = 2.0 (unity peak)
+    }
 }
 
 esp_err_t config_manager_init(void)
@@ -189,6 +199,21 @@ esp_err_t config_manager_init(void)
     } else {
         ESP_LOGE(TAG, "Failed to open NVS: %s", esp_err_to_name(err));
         return err;
+    }
+
+    // dither_freq_hz/dither_max_brightness_pct were added right after
+    // dither_enabled, which happened to leave exactly enough compiler
+    // padding at the end of the old struct that sizeof(device_config_t)
+    // didn't grow — so a blob saved by older firmware silently overwrites
+    // these two fields with its old zero padding instead of leaving them at
+    // the just-applied defaults (the usual "new fields are safe because the
+    // load is truncated to the old, smaller size" guarantee assumes sizeof
+    // always grows, which isn't true here). dither_freq_hz is never
+    // legitimately 0 (range is 1-60, clamped on every save), so treat 0 as
+    // "this blob predates both fields" and restore both to their defaults.
+    if (config.dither_freq_hz == 0) {
+        config.dither_freq_hz = CONFIG_ML_LED_DITHER_FREQ_HZ_DEFAULT;
+        config.dither_max_brightness_pct = CONFIG_ML_LED_DITHER_MAX_BRIGHTNESS_PCT_DEFAULT;
     }
 
     initialized = true;
