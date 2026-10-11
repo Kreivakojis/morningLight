@@ -14,6 +14,7 @@
 #include "sunrise_engine.h"
 #include "animation_engine.h"
 #include "temperature_manager.h"
+#include "power_monitor.h"
 #include "time_manager.h"
 
 static const char *TAG = "mqtt_mgr";
@@ -180,6 +181,39 @@ static void publish_ha_discovery(void)
         cJSON_Delete(json);
     }
 
+    // --- Power monitoring sensors ---
+    {
+        const char *power_names[] = {"AC Current", "DC Current", "DC Voltage"};
+        const char *power_ids[] = {"ac_current", "dc_current", "dc_voltage"};
+        const char *power_classes[] = {"current", "current", "voltage"};
+        const char *power_units[] = {"A", "A", "V"};
+
+        for (int i = 0; i < 3; i++) {
+            cJSON *json = cJSON_CreateObject();
+            snprintf(uid, sizeof(uid), "morninglight_%s_%s", device_id, power_ids[i]);
+            cJSON_AddStringToObject(json, "unique_id", uid);
+            cJSON_AddStringToObject(json, "name", power_names[i]);
+            cJSON_AddStringToObject(json, "device_class", power_classes[i]);
+            cJSON_AddStringToObject(json, "unit_of_measurement", power_units[i]);
+            cJSON_AddStringToObject(json, "value_template", "{{ value }}");
+
+            char sensor_suffix[32];
+            snprintf(sensor_suffix, sizeof(sensor_suffix), "sensor/%s", power_ids[i]);
+            build_topic(sensor_suffix);
+            cJSON_AddStringToObject(json, "state_topic", topic_buf);
+
+            cJSON_AddItemToObject(json, "device", build_device_block());
+            cJSON_AddItemToObject(json, "origin", build_origin());
+            build_availability(json);
+
+            payload = cJSON_PrintUnformatted(json);
+            snprintf(disc_topic, sizeof(disc_topic), "homeassistant/sensor/morninglight_%s/%s/config", device_id, power_ids[i]);
+            esp_mqtt_client_publish(client, disc_topic, payload, 0, 1, 1);
+            free(payload);
+            cJSON_Delete(json);
+        }
+    }
+
     // --- Sunrise progress sensor ---
     {
         cJSON *json = cJSON_CreateObject();
@@ -329,6 +363,26 @@ static void publish_temperatures(void)
     }
 }
 
+// Publish power monitoring sensors
+static void publish_power(void)
+{
+    float value;
+    char buf[16];
+
+    if (power_monitor_get_ac_current(&value) == ESP_OK) {
+        snprintf(buf, sizeof(buf), "%.2f", value);
+        publish("sensor/ac_current", buf, 0, 0);
+    }
+    if (power_monitor_get_dc_current(&value) == ESP_OK) {
+        snprintf(buf, sizeof(buf), "%.2f", value);
+        publish("sensor/dc_current", buf, 0, 0);
+    }
+    if (power_monitor_get_dc_voltage(&value) == ESP_OK) {
+        snprintf(buf, sizeof(buf), "%.2f", value);
+        publish("sensor/dc_voltage", buf, 0, 0);
+    }
+}
+
 // Publish all state
 static void publish_all_state(void)
 {
@@ -336,6 +390,7 @@ static void publish_all_state(void)
     publish_sunrise_state();
     publish_animation_state();
     publish_temperatures();
+    publish_power();
     state_dirty = false;
 }
 

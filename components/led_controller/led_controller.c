@@ -16,10 +16,23 @@ extern void color_utils_kelvin_to_rgb(uint16_t kelvin,
 
 static const char *TAG = "led_ctrl";
 
-// Current driver
-static const led_driver_ops_t *driver = NULL;
+// Physical output slots: addressable strip 1, addressable strip 2, PWM RGB
+typedef enum {
+    OUT_WS1 = 0,
+    OUT_WS2 = 1,
+    OUT_PWM = 2,
+    OUT_COUNT,
+} output_id_t;
 
-// State (for fading, independent of driver)
+typedef struct {
+    const led_driver_ops_t *ops;
+    bool enabled;
+    uint16_t led_count; // addressable strips only; 0 for PWM
+} output_slot_t;
+
+static output_slot_t slots[OUT_COUNT];
+
+// State (for fading, independent of the drivers)
 static struct {
     uint8_t r, g, b;
     uint8_t brightness;
@@ -33,18 +46,17 @@ static struct {
     uint8_t fade_end_r, fade_end_g, fade_end_b, fade_end_brightness;
     uint32_t fade_duration_ms;
     uint32_t fade_start_time;
-
-    // LED type tracking
-    led_type_t led_type;
-    uint16_t led_count;
 } led_state = {0};
 
 static void apply_color(void)
 {
-    if (!led_state.initialized || !driver) return;
+    if (!led_state.initialized) return;
 
-    driver->set_rgb(led_state.r, led_state.g, led_state.b);
-    driver->set_brightness(led_state.brightness);
+    for (int i = 0; i < OUT_COUNT; i++) {
+        if (!slots[i].enabled) continue;
+        slots[i].ops->set_rgb(led_state.r, led_state.g, led_state.b);
+        slots[i].ops->set_brightness(led_state.brightness);
+    }
 }
 
 static void fade_task_fn(void *arg)
@@ -96,45 +108,39 @@ esp_err_t led_controller_init(void)
         return ESP_ERR_NO_MEM;
     }
 
-    // Get LED type from config
     device_config_t *cfg = config_manager_get();
-    led_type_t led_type = LED_TYPE_PWM;
-    uint16_t led_count = 30;
+    bool ws1_enabled = cfg ? cfg->ws1_enabled : true;
+    bool ws2_enabled = cfg ? cfg->ws2_enabled : false;
+    bool pwm_enabled = cfg ? cfg->pwm_enabled : false;
+    uint16_t ws1_count = (cfg && cfg->ws1_led_count) ? cfg->ws1_led_count : 30;
+    uint16_t ws2_count = (cfg && cfg->ws2_led_count) ? cfg->ws2_led_count : 30;
 
-    if (cfg) {
-        ESP_LOGI(TAG, "Config: led_type=%d, led_count=%d", cfg->led_type, cfg->led_count);
-        led_type = (led_type_t)cfg->led_type;
-        led_count = cfg->led_count;
-        if (led_count == 0) led_count = 30;
-    } else {
-        ESP_LOGW(TAG, "Config is NULL, using defaults");
+    slots[OUT_WS1] = (output_slot_t){ .ops = &led_driver_ws2811_1, .enabled = ws1_enabled, .led_count = ws1_count };
+    slots[OUT_WS2] = (output_slot_t){ .ops = &led_driver_ws2811_2, .enabled = ws2_enabled, .led_count = ws2_count };
+    slots[OUT_PWM] = (output_slot_t){ .ops = &led_driver_pwm, .enabled = pwm_enabled, .led_count = 0 };
+
+    if (!ws1_enabled && !ws2_enabled && !pwm_enabled) {
+        ESP_LOGW(TAG, "No LED output enabled in config — device will have no light output");
     }
 
-    led_state.led_type = led_type;
-    led_state.led_count = led_count;
-
-    // Select driver based on LED type
-    ESP_LOGI(TAG, "Selecting driver for led_type=%d", led_type);
-    if (led_type == LED_TYPE_WS2811) {
-        driver = &led_driver_ws2811;
-        ESP_LOGI(TAG, "Using WS2811 driver (%d LEDs)", led_count);
-    } else {
-        driver = &led_driver_pwm;
-        ESP_LOGI(TAG, "Using PWM driver");
-    }
-
-    // Initialize driver
-    esp_err_t ret = driver->init();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Driver init failed: %s", esp_err_to_name(ret));
-        return ret;
+    // Initialize every slot's driver unconditionally: addressable strips use
+    // init() to drive their enable GPIO fail-safe low even when disabled,
+    // and the PWM driver has no power-gate hardware at all, so skipping its
+    // init on disable would leave its GPIOs floating instead of at 0 duty.
+    for (int i = 0; i < OUT_COUNT; i++) {
+        esp_err_t ret = slots[i].ops->init();
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Output %d driver init failed: %s", i, esp_err_to_name(ret));
+            return ret;
+        }
     }
 
     led_state.initialized = true;
     led_state.brightness = 0;
     led_state.r = led_state.g = led_state.b = 0;
 
-    ESP_LOGI(TAG, "LED controller initialized");
+    ESP_LOGI(TAG, "LED controller initialized: WS1=%d(%d) WS2=%d(%d) PWM=%d",
+             ws1_enabled, ws1_count, ws2_enabled, ws2_count, pwm_enabled);
     return ESP_OK;
 }
 
@@ -258,8 +264,9 @@ void led_controller_off(void)
 
 void led_controller_set_duty_raw(uint32_t duty_r, uint32_t duty_g, uint32_t duty_b)
 {
-    // This function is PWM-specific and maintained for backward compatibility
-    // For WS2811, we convert duty to RGB values
+    // Historically PWM-specific; now converts to 8-bit RGB and broadcasts
+    // through apply_color() like every other setter, so it also proportionally
+    // drives any enabled addressable strips.
     if (!led_state.initialized) return;
 
     // Clamp values to valid range (12-bit)
@@ -286,33 +293,34 @@ void led_controller_set_duty_raw(uint32_t duty_r, uint32_t duty_g, uint32_t duty
 
 esp_err_t led_controller_set_frequency(uint32_t freq_hz)
 {
-    if (!led_state.initialized || !driver) return ESP_ERR_INVALID_STATE;
-    return driver->set_frequency(freq_hz);
+    if (!led_state.initialized || !slots[OUT_PWM].enabled) return ESP_ERR_INVALID_STATE;
+    return slots[OUT_PWM].ops->set_frequency(freq_hz);
 }
 
 uint32_t led_controller_get_frequency(void)
 {
-    if (!led_state.initialized || !driver) return 0;
-    return driver->get_frequency();
-}
-
-led_type_t led_controller_get_type(void)
-{
-    return led_state.led_type;
+    if (!led_state.initialized || !slots[OUT_PWM].enabled) return 0;
+    return slots[OUT_PWM].ops->get_frequency();
 }
 
 uint16_t led_controller_get_led_count(void)
 {
-    return led_state.led_count;
+    uint16_t count = 1;
+    if (slots[OUT_WS1].enabled && slots[OUT_WS1].led_count > count) count = slots[OUT_WS1].led_count;
+    if (slots[OUT_WS2].enabled && slots[OUT_WS2].led_count > count) count = slots[OUT_WS2].led_count;
+    return count;
 }
 
 void led_controller_set_pixel_brightnesses(const uint8_t *brightness_array, uint16_t count)
 {
-    if (!led_state.initialized || !driver || !driver->set_pixel_brightnesses) {
+    if (!led_state.initialized) {
         return;
     }
 
     xSemaphoreTake(led_state.mutex, portMAX_DELAY);
-    driver->set_pixel_brightnesses(brightness_array, count);
+    for (int i = 0; i < OUT_COUNT; i++) {
+        if (!slots[i].enabled || !slots[i].ops->set_pixel_brightnesses) continue;
+        slots[i].ops->set_pixel_brightnesses(brightness_array, count);
+    }
     xSemaphoreGive(led_state.mutex);
 }

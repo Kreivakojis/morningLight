@@ -9,7 +9,7 @@ extern "C" {
 #endif
 
 typedef enum {
-    TEMP_SENSOR_INTERNAL = 0,   // NTC on GPIO 34
+    TEMP_SENSOR_INTERNAL = 0,   // NTC on GPIO 36
     TEMP_SENSOR_EXTERNAL_1,     // DS18B20 on GPIO 15
     TEMP_SENSOR_EXTERNAL_2,     // DS18B20 on GPIO 16
     TEMP_SENSOR_COUNT

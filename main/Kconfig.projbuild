@@ -3,7 +3,7 @@ menu "MorningLight Configuration"
     menu "GPIO Configuration"
         config ML_GPIO_LED_R
             int "Red LED GPIO"
-            default 25
+            default 27
             help
                 GPIO pin for PWM red channel.
 
@@ -15,15 +15,35 @@ menu "MorningLight Configuration"
 
         config ML_GPIO_LED_B
             int "Blue LED GPIO"
-            default 27
+            default 25
             help
                 GPIO pin for PWM blue channel.
 
-        config ML_GPIO_LED_DATA
-            int "Addressable LED Data GPIO"
+        config ML_GPIO_WS1_DATA
+            int "Addressable Strip 1 Data GPIO"
+            default 33
+            help
+                GPIO pin for addressable LED strip 1 data (WS2812 etc).
+
+        config ML_GPIO_WS1_ENABLE
+            int "Addressable Strip 1 Enable GPIO"
+            default 32
+            help
+                GPIO pin driving the low-side N-channel MOSFET that gates
+                strip 1's ground return (power-gate on/off).
+
+        config ML_GPIO_WS2_DATA
+            int "Addressable Strip 2 Data GPIO"
+            default 19
+            help
+                GPIO pin for addressable LED strip 2 data (WS2812 etc).
+
+        config ML_GPIO_WS2_ENABLE
+            int "Addressable Strip 2 Enable GPIO"
             default 18
             help
-                GPIO pin for addressable LED data (WS2812 etc).
+                GPIO pin driving the low-side N-channel MOSFET that gates
+                strip 2's ground return (power-gate on/off).
 
         config ML_GPIO_BTN_RESET
             int "Reset Button GPIO"
@@ -81,24 +101,24 @@ menu "MorningLight Configuration"
     endmenu
 
     menu "LED Configuration"
-        choice ML_LED_TYPE
-            prompt "Default LED Type"
-            default ML_LED_TYPE_PWM
+        config ML_LED_WS1_ENABLED_DEFAULT
+            bool "Addressable Strip 1 Populated by Default"
+            default y
             help
-                Select the default LED type for the device.
+                Whether addressable strip 1 is enabled out of the box.
 
-            config ML_LED_TYPE_PWM
-                bool "PWM RGB (3-channel)"
-                help
-                    Traditional PWM-controlled RGB LEDs using separate channels
-                    for red, green, and blue.
+        config ML_LED_WS2_ENABLED_DEFAULT
+            bool "Addressable Strip 2 Populated by Default"
+            default n
+            help
+                Whether addressable strip 2 is enabled out of the box.
 
-            config ML_LED_TYPE_WS2811
-                bool "WS2811 Addressable"
-                help
-                    WS2811/WS2812 addressable LED strips. All LEDs will display
-                    the same color (uniform mode for sunrise simulation).
-        endchoice
+        config ML_LED_PWM_ENABLED_DEFAULT
+            bool "PWM RGB Connector Populated by Default"
+            default n
+            help
+                Whether the discrete PWM RGB strip connector is enabled out
+                of the box. All three outputs may be enabled simultaneously.
 
         config ML_LED_COUNT_DEFAULT
             int "Default LED Count"
@@ -106,6 +126,16 @@ menu "MorningLight Configuration"
             range 1 300
             help
                 Default number of LEDs for WS2811 strips.
+
+        config ML_LED_DITHER_ENABLED_DEFAULT
+            bool "Temporal Dithering Enabled by Default"
+            default n
+            help
+                Whether temporal error-diffusion dithering on the animated
+                WS2811 pixel path is enabled out of the box. Can smooth out
+                8-bit quantization stepping at low brightness/color
+                temperature, but subtly alters wave animation timing.
+                User-toggleable at runtime via the Settings page.
 
         config ML_LED_PWM_FREQ_HZ
             int "PWM Frequency (Hz)"
@@ -190,7 +220,7 @@ menu "MorningLight Configuration"
     menu "Temperature Sensors"
         config ML_GPIO_NTC_ADC
             int "NTC Thermistor ADC GPIO"
-            default 34
+            default 36
             help
                 GPIO pin for NTC thermistor (must be ADC1 channel).
 
@@ -222,6 +252,68 @@ menu "MorningLight Configuration"
             int "Temperature Update Interval (ms)"
             default 5000
             range 1000 30000
+    endmenu
+
+    menu "Power Monitoring"
+        config ML_GPIO_CT_AC_ADC
+            int "AC Current Transformer ADC GPIO"
+            default 35
+            help
+                GPIO pin for the AC current transformer sensor (must be
+                ADC1 channel).
+
+        config ML_GPIO_DC_CURRENT_ADC
+            int "DC Current Sense (Op-Amp) ADC GPIO"
+            default 34
+            help
+                GPIO pin for the op-amp output of the DC shunt current
+                sense circuit (must be ADC1 channel).
+
+        config ML_GPIO_DC_VOLTAGE_ADC
+            int "DC Voltage Sense (Divider) ADC GPIO"
+            default 39
+            help
+                GPIO pin for the resistive-divider DC voltage sense
+                (must be ADC1 channel).
+
+        config ML_AC_CURRENT_CAL_X100
+            int "AC CT Calibration Constant x100 (Amps RMS per Volt RMS)"
+            default 3000
+            help
+                Amps-RMS per Volt-RMS measured at the ADC pin, times 100.
+                Depends on CT turns ratio and burden resistor; must be
+                calibrated against a known load. Default is a placeholder.
+
+        config ML_DC_CURRENT_SCALE_X100
+            int "DC Current Scale x100 (Amps per Volt)"
+            default 1000
+            help
+                Amps per Volt of op-amp output above the zero-current
+                offset, times 100. Depends on shunt resistance and op-amp
+                gain; must be calibrated.
+
+        config ML_DC_CURRENT_OFFSET_MV
+            int "DC Current Zero-Offset (mV)"
+            default 1650
+            help
+                Op-amp output voltage, in millivolts, at zero current.
+
+        config ML_DC_VOLTAGE_SCALE_X100
+            int "DC Voltage Divider Scale x100 (Volts-in per Volt-at-ADC)"
+            default 933
+            help
+                Inverse of the voltage divider ratio, times 100.
+                Default assumes a 20k/2.4k divider: (20000+2400)/2400 = 9.33.
+
+        config ML_POWER_UPDATE_INTERVAL_MS
+            int "Power Monitor Update Interval (ms)"
+            default 2000
+            range 500 30000
+
+        config ML_AC_SAMPLE_WINDOW_MS
+            int "AC RMS Sample Window (ms)"
+            default 200
+            range 100 1000
     endmenu
 
 endmenu

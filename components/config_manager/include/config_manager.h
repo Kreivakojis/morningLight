@@ -109,6 +109,24 @@ typedef struct {
     // External sensor display names (added at end for NVS compat)
     char temp_name_ds1[17];             // Custom name for External 1, empty = "External 1"
     char temp_name_ds2[17];             // Custom name for External 2, empty = "External 2"
+
+    // Multi-output LED configuration (added at end for NVS compat) — dual
+    // WS2811 strips + simultaneous PWM RGB connector. `led_type`/`led_count`
+    // above are unused/vestigial, kept only for struct layout stability.
+    bool ws1_enabled;                   // Addressable strip 1 (GPIO33 data / GPIO32 enable) populated
+    uint16_t ws1_led_count;             // Strip 1 LED count (1-300)
+    bool ws2_enabled;                   // Addressable strip 2 (GPIO19 data / GPIO18 enable) populated
+    uint16_t ws2_led_count;             // Strip 2 LED count (1-300)
+    bool pwm_enabled;                   // Discrete PWM RGB connector (GPIO27/26/25) populated
+
+    // Power monitoring calibration (added at end for NVS compat)
+    float ac_current_cal;               // Amps RMS per Volt RMS at the CT ADC pin
+    float dc_current_scale;             // Amps per Volt from the op-amp output
+    float dc_current_offset_v;          // Op-amp output voltage at zero current
+    float dc_voltage_scale;             // Volts-in per Volt-at-ADC (divider inverse)
+
+    // WS2811 animated-pixel-path temporal dithering (added at end for NVS compat)
+    bool dither_enabled;                // Error-diffusion dithering on the animation/wave pixel path
 } device_config_t;
 
 /**

@@ -35,13 +35,27 @@ static void set_defaults(void)
     // Default PWM frequency
     config.pwm_frequency = CONFIG_ML_LED_PWM_FREQ_HZ;
 
-    // Default LED type and count
-#ifdef CONFIG_ML_LED_TYPE_WS2811
-    config.led_type = CONFIG_LED_TYPE_WS2811;
+    // led_type/led_count are vestigial (superseded by ws1/ws2/pwm_enabled
+    // below) but left zeroed for struct layout stability.
+
+    // Multi-output LED configuration
+#ifdef CONFIG_ML_LED_WS1_ENABLED_DEFAULT
+    config.ws1_enabled = true;
 #else
-    config.led_type = CONFIG_LED_TYPE_PWM;
+    config.ws1_enabled = false;
 #endif
-    config.led_count = CONFIG_ML_LED_COUNT_DEFAULT;
+    config.ws1_led_count = CONFIG_ML_LED_COUNT_DEFAULT;
+#ifdef CONFIG_ML_LED_WS2_ENABLED_DEFAULT
+    config.ws2_enabled = true;
+#else
+    config.ws2_enabled = false;
+#endif
+    config.ws2_led_count = CONFIG_ML_LED_COUNT_DEFAULT;
+#ifdef CONFIG_ML_LED_PWM_ENABLED_DEFAULT
+    config.pwm_enabled = true;
+#else
+    config.pwm_enabled = false;
+#endif
 
     // Default alarm (disabled)
     config.alarms[0].hour = 7;
@@ -119,6 +133,19 @@ static void set_defaults(void)
     // External sensor names (empty = use default label)
     config.temp_name_ds1[0] = '\0';
     config.temp_name_ds2[0] = '\0';
+
+    // Power monitoring calibration
+    config.ac_current_cal = CONFIG_ML_AC_CURRENT_CAL_X100 / 100.0f;
+    config.dc_current_scale = CONFIG_ML_DC_CURRENT_SCALE_X100 / 100.0f;
+    config.dc_current_offset_v = CONFIG_ML_DC_CURRENT_OFFSET_MV / 1000.0f;
+    config.dc_voltage_scale = CONFIG_ML_DC_VOLTAGE_SCALE_X100 / 100.0f;
+
+    // WS2811 animated-pixel-path temporal dithering
+#ifdef CONFIG_ML_LED_DITHER_ENABLED_DEFAULT
+    config.dither_enabled = true;
+#else
+    config.dither_enabled = false;
+#endif
 }
 
 esp_err_t config_manager_init(void)
@@ -144,8 +171,10 @@ esp_err_t config_manager_init(void)
             err = nvs_get_blob(handle, NVS_KEY_CONFIG, &config, &read_size);
             if (err == ESP_OK) {
                 ESP_LOGI(TAG, "Loaded config from NVS (stored=%d, struct=%d)", stored_size, sizeof(device_config_t));
-                ESP_LOGI(TAG, "Config values: led_type=%d, led_count=%d, pwm_freq=%lu",
-                         config.led_type, config.led_count, config.pwm_frequency);
+                ESP_LOGI(TAG, "Config values: ws1=%d(%d) ws2=%d(%d) pwm=%d, pwm_freq=%lu",
+                         config.ws1_enabled, config.ws1_led_count,
+                         config.ws2_enabled, config.ws2_led_count,
+                         config.pwm_enabled, config.pwm_frequency);
             } else {
                 ESP_LOGW(TAG, "Failed to read config: %s, using defaults", esp_err_to_name(err));
                 set_defaults();

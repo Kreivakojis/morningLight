@@ -55,6 +55,22 @@
                         <span class="label">External 2</span>
                         <span id="temp-external-2" class="value">--</span>
                     </div>
+                    <div class="status-item">
+                        <span class="label">AC Current</span>
+                        <span id="ac-current" class="value">--</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">DC Current</span>
+                        <span id="dc-current" class="value">--</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">DC Voltage</span>
+                        <span id="dc-voltage" class="value">--</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">DC Power</span>
+                        <span id="dc-power" class="value">--</span>
+                    </div>
                 </div>
                 <div id="dark-mode-banner" class="dark-mode-banner" style="display:none">Dark Mode Active</div>
             </div>
@@ -355,19 +371,17 @@
             <div class="card collapsible collapsed">
                 <h2>LED Configuration</h2>
                 <div class="card-body">
-                    <div class="form-group">
-                        <label>LED Type</label>
-                        <select id="led-type">
-                            <option value="0">PWM RGB (3-channel)</option>
-                            <option value="1">WS2811 Addressable</option>
-                        </select>
+                    <p class="hint">All populated outputs run simultaneously, mirroring the same color/pattern.</p>
+                    <div class="form-group output-slot">
+                        <label><input type="checkbox" id="ws1-enabled"> Strip 1 (Addressable)</label>
+                        <input type="number" id="ws1-led-count" min="1" max="300" value="30">
                     </div>
-                    <div class="form-group" id="led-count-group" style="display:none">
-                        <label>Number of LEDs</label>
-                        <input type="number" id="led-count" min="1" max="300" value="30">
+                    <div class="form-group output-slot">
+                        <label><input type="checkbox" id="ws2-enabled"> Strip 2 (Addressable)</label>
+                        <input type="number" id="ws2-led-count" min="1" max="300" value="30">
                     </div>
-                    <div class="form-group" id="pwm-freq-group">
-                        <label>PWM Frequency (Hz)</label>
+                    <div class="form-group output-slot">
+                        <label><input type="checkbox" id="pwm-enabled"> PWM RGB Connector</label>
                         <input type="range" id="pwm-frequency" min="100" max="500" value="200">
                         <span id="pwm-frequency-val">200 Hz</span>
                     </div>
@@ -375,6 +389,34 @@
                         <label>Gamma Correction</label>
                         <input type="range" id="gamma" min="10" max="40" value="22">
                         <span id="gamma-val">2.2</span>
+                    </div>
+                    <div class="form-group">
+                        <label><input type="checkbox" id="dither-enabled"> Temporal Dithering (experimental)</label>
+                        <p class="hint">Smooths 8-bit stepping on the animated strip at low brightness/warm color, but subtly alters wave animation timing. Off by default.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Power Monitoring -->
+            <div class="card collapsible collapsed">
+                <h2>Power Monitoring</h2>
+                <div class="card-body">
+                    <p class="hint">Calibrate against a known load/supply; readings are wrong until tuned.</p>
+                    <div class="form-group">
+                        <label>AC CT Calibration (A per V RMS)</label>
+                        <input type="number" id="ac-current-cal" step="0.01" value="30">
+                    </div>
+                    <div class="form-group">
+                        <label>DC Current Scale (A per V)</label>
+                        <input type="number" id="dc-current-scale" step="0.01" value="10">
+                    </div>
+                    <div class="form-group">
+                        <label>DC Current Zero-Offset (V)</label>
+                        <input type="number" id="dc-current-offset-v" step="0.001" value="1.65">
+                    </div>
+                    <div class="form-group">
+                        <label>DC Voltage Divider Scale (V-in per V-ADC)</label>
+                        <input type="number" id="dc-voltage-scale" step="0.01" value="9.33">
                     </div>
                 </div>
             </div>
@@ -416,7 +458,6 @@
                         <input type="range" id="max-brightness" min="10" max="100" value="100">
                         <span id="max-brightness-val">100%</span>
                     </div>
-                    <button id="btn-save-settings" class="btn btn-primary btn-full">Save Settings</button>
                 </div>
             </div>
 
@@ -480,7 +521,8 @@
             <!-- System (not collapsible) -->
             <div class="card">
                 <h2>System</h2>
-                <button id="btn-reboot" class="btn btn-danger btn-full">Reboot Device</button>
+                <button id="btn-save-settings" class="btn btn-primary btn-full">Save Settings</button>
+                <button id="btn-reboot" class="btn btn-danger btn-full" style="margin-top:10px">Reboot Device</button>
                 <button id="btn-factory-reset" class="btn btn-danger btn-full" style="margin-top:10px">Factory Reset</button>
             </div>
         </section>

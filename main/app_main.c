@@ -17,7 +17,9 @@
 #include "sunrise_engine.h"
 #include "animation_engine.h"
 #include "button_handler.h"
+#include "adc_shared.h"
 #include "temperature_manager.h"
+#include "power_monitor.h"
 #include "mqtt_manager.h"
 
 static const char *TAG = "app_main";
@@ -67,6 +69,34 @@ static void app_event_handler(void *arg, esp_event_base_t event_base,
                 config_manager_factory_reset();
                 esp_restart();
                 break;
+
+            // Scenario button: diagnostic hooks for testing LED output with
+            // WiFi's RMT-interrupting interrupt load removed from the
+            // picture, without needing the web UI. Short press toggles the
+            // "Gentle" animation preset; long press permanently kills WiFi
+            // for the rest of this boot (reboot to restore it).
+            case APP_EVENT_BUTTON_SHORT_PRESS: {
+                app_event_button_t *btn = (app_event_button_t *)event_data;
+                if (btn->button_id == BUTTON_SCENARIO) {
+                    if (animation_engine_is_running()) {
+                        ESP_LOGI(TAG, "Scenario button: stopping animation");
+                        animation_engine_stop();
+                    } else {
+                        ESP_LOGI(TAG, "Scenario button: starting 'Gentle' animation (preset 0)");
+                        animation_engine_start(0);
+                    }
+                }
+                break;
+            }
+
+            case APP_EVENT_BUTTON_LONG_PRESS: {
+                app_event_button_t *btn = (app_event_button_t *)event_data;
+                if (btn->button_id == BUTTON_SCENARIO) {
+                    ESP_LOGW(TAG, "Scenario button long-press: killing WiFi for the rest of this boot");
+                    wifi_manager_deinit();
+                }
+                break;
+            }
 
             case APP_EVENT_CONFIG_CHANGED:
                 ESP_LOGI(TAG, "Configuration changed");
@@ -126,7 +156,11 @@ void app_main(void)
 
     ESP_ERROR_CHECK(button_handler_init());
 
+    ESP_ERROR_CHECK(adc_shared_init());
+
     ESP_ERROR_CHECK(temperature_manager_init());
+
+    ESP_ERROR_CHECK(power_monitor_init());
 
     ESP_ERROR_CHECK(time_manager_init());
 

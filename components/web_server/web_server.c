@@ -18,6 +18,7 @@
 #include "animation_engine.h"
 #include "dns_server.h"
 #include "temperature_manager.h"
+#include "power_monitor.h"
 #include "mqtt_manager.h"
 
 static const char *TAG = "web_server";
@@ -96,6 +97,7 @@ static cJSON *parse_json_body(httpd_req_t *req)
 static esp_err_t root_get_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "text/html");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
     httpd_resp_send(req, index_html_start, index_html_end - index_html_start);
     return ESP_OK;
 }
@@ -104,6 +106,7 @@ static esp_err_t root_get_handler(httpd_req_t *req)
 static esp_err_t style_get_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "text/css");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
     httpd_resp_send(req, style_css_start, style_css_end - style_css_start);
     return ESP_OK;
 }
@@ -112,6 +115,7 @@ static esp_err_t style_get_handler(httpd_req_t *req)
 static esp_err_t app_js_get_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "application/javascript");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
     httpd_resp_send(req, app_js_start, app_js_end - app_js_start);
     return ESP_OK;
 }
@@ -184,6 +188,33 @@ static esp_err_t api_status_handler(httpd_req_t *req)
         cJSON_AddNumberToObject(json, "temp_external_2", roundf(temp * 10.0f) / 10.0f);
     } else {
         cJSON_AddNullToObject(json, "temp_external_2");
+    }
+
+    // Power monitoring
+    float ac_current, dc_current, dc_voltage;
+    bool have_ac = (power_monitor_get_ac_current(&ac_current) == ESP_OK);
+    bool have_dc_i = (power_monitor_get_dc_current(&dc_current) == ESP_OK);
+    bool have_dc_v = (power_monitor_get_dc_voltage(&dc_voltage) == ESP_OK);
+
+    if (have_ac) {
+        cJSON_AddNumberToObject(json, "ac_current", roundf(ac_current * 100.0f) / 100.0f);
+    } else {
+        cJSON_AddNullToObject(json, "ac_current");
+    }
+    if (have_dc_i) {
+        cJSON_AddNumberToObject(json, "dc_current", roundf(dc_current * 100.0f) / 100.0f);
+    } else {
+        cJSON_AddNullToObject(json, "dc_current");
+    }
+    if (have_dc_v) {
+        cJSON_AddNumberToObject(json, "dc_voltage", roundf(dc_voltage * 100.0f) / 100.0f);
+    } else {
+        cJSON_AddNullToObject(json, "dc_voltage");
+    }
+    if (have_dc_i && have_dc_v) {
+        cJSON_AddNumberToObject(json, "dc_power", roundf(dc_current * dc_voltage * 100.0f) / 100.0f);
+    } else {
+        cJSON_AddNullToObject(json, "dc_power");
     }
 
     return send_json_response(req, json);
@@ -273,17 +304,27 @@ static esp_err_t api_config_get_handler(httpd_req_t *req)
     cJSON_AddNumberToObject(json, "pwm_frequency", config->pwm_frequency);
     cJSON_AddBoolToObject(json, "setup_complete", config->setup_complete);
 
-    // LED configuration
-    cJSON_AddNumberToObject(json, "led_type", config->led_type);
-    cJSON_AddStringToObject(json, "led_type_name",
-        config->led_type == CONFIG_LED_TYPE_WS2811 ? "WS2811" : "PWM");
-    cJSON_AddNumberToObject(json, "led_count", config->led_count);
+    // LED configuration: 3 independent, simultaneous outputs
+    cJSON_AddBoolToObject(json, "ws1_enabled", config->ws1_enabled);
+    cJSON_AddNumberToObject(json, "ws1_led_count", config->ws1_led_count);
+    cJSON_AddBoolToObject(json, "ws2_enabled", config->ws2_enabled);
+    cJSON_AddNumberToObject(json, "ws2_led_count", config->ws2_led_count);
+    cJSON_AddBoolToObject(json, "pwm_enabled", config->pwm_enabled);
     cJSON_AddNumberToObject(json, "gamma", config->gamma_x10 / 10.0);
     cJSON_AddNumberToObject(json, "temp_offset_ntc", config->temp_offset_ntc_x10 / 10.0);
     cJSON_AddNumberToObject(json, "temp_offset_ds1", config->temp_offset_ds1_x10 / 10.0);
     cJSON_AddNumberToObject(json, "temp_offset_ds2", config->temp_offset_ds2_x10 / 10.0);
     cJSON_AddStringToObject(json, "temp_name_ds1", config->temp_name_ds1);
     cJSON_AddStringToObject(json, "temp_name_ds2", config->temp_name_ds2);
+
+    // Power monitoring calibration
+    cJSON_AddNumberToObject(json, "ac_current_cal", config->ac_current_cal);
+    cJSON_AddNumberToObject(json, "dc_current_scale", config->dc_current_scale);
+    cJSON_AddNumberToObject(json, "dc_current_offset_v", config->dc_current_offset_v);
+    cJSON_AddNumberToObject(json, "dc_voltage_scale", config->dc_voltage_scale);
+
+    // WS2811 animated-pixel-path temporal dithering (optional, experimental)
+    cJSON_AddBoolToObject(json, "dither_enabled", config->dither_enabled);
 
     // WiFi (don't expose password)
     cJSON *wifi = cJSON_AddObjectToObject(json, "wifi");
@@ -324,28 +365,58 @@ static esp_err_t api_config_post_handler(httpd_req_t *req)
         }
     }
 
-    // LED type change requires restart
-    cJSON *led_type = cJSON_GetObjectItem(json, "led_type");
-    if (cJSON_IsNumber(led_type)) {
-        uint8_t new_type = (uint8_t)led_type->valuedouble;
-        ESP_LOGI(TAG, "LED type: current=%d, new=%d", config->led_type, new_type);
-        if (new_type != config->led_type) {
-            config->led_type = new_type;
-            restart_required = true;
+    // Output enable/count changes require a restart (drivers/GPIOs are
+    // configured at led_controller_init() time)
+    cJSON *ws1_en = cJSON_GetObjectItem(json, "ws1_enabled");
+    if (cJSON_IsBool(ws1_en)) {
+        bool v = cJSON_IsTrue(ws1_en);
+        if (v != config->ws1_enabled) restart_required = true;
+        config->ws1_enabled = v;
+    }
+    cJSON *ws1_cnt = cJSON_GetObjectItem(json, "ws1_led_count");
+    if (cJSON_IsNumber(ws1_cnt)) {
+        uint16_t new_count = (uint16_t)ws1_cnt->valuedouble;
+        if (new_count >= 1 && new_count <= 300) {
+            if (new_count != config->ws1_led_count) restart_required = true;
+            config->ws1_led_count = new_count;
         }
     }
-
-    // LED count change requires restart for WS2811
-    cJSON *led_count = cJSON_GetObjectItem(json, "led_count");
-    if (cJSON_IsNumber(led_count)) {
-        uint16_t new_count = (uint16_t)led_count->valuedouble;
-        ESP_LOGI(TAG, "LED count: current=%d, new=%d", config->led_count, new_count);
+    cJSON *ws2_en = cJSON_GetObjectItem(json, "ws2_enabled");
+    if (cJSON_IsBool(ws2_en)) {
+        bool v = cJSON_IsTrue(ws2_en);
+        if (v != config->ws2_enabled) restart_required = true;
+        config->ws2_enabled = v;
+    }
+    cJSON *ws2_cnt = cJSON_GetObjectItem(json, "ws2_led_count");
+    if (cJSON_IsNumber(ws2_cnt)) {
+        uint16_t new_count = (uint16_t)ws2_cnt->valuedouble;
         if (new_count >= 1 && new_count <= 300) {
-            if (new_count != config->led_count && config->led_type == CONFIG_LED_TYPE_WS2811) {
-                restart_required = true;
-            }
-            config->led_count = new_count;
+            if (new_count != config->ws2_led_count) restart_required = true;
+            config->ws2_led_count = new_count;
         }
+    }
+    cJSON *pwm_en = cJSON_GetObjectItem(json, "pwm_enabled");
+    if (cJSON_IsBool(pwm_en)) {
+        bool v = cJSON_IsTrue(pwm_en);
+        if (v != config->pwm_enabled) restart_required = true;
+        config->pwm_enabled = v;
+    }
+
+    // Power monitoring calibration (applied live, no restart needed)
+    cJSON *cal;
+    cal = cJSON_GetObjectItem(json, "ac_current_cal");
+    if (cJSON_IsNumber(cal)) config->ac_current_cal = (float)cal->valuedouble;
+    cal = cJSON_GetObjectItem(json, "dc_current_scale");
+    if (cJSON_IsNumber(cal)) config->dc_current_scale = (float)cal->valuedouble;
+    cal = cJSON_GetObjectItem(json, "dc_current_offset_v");
+    if (cJSON_IsNumber(cal)) config->dc_current_offset_v = (float)cal->valuedouble;
+    cal = cJSON_GetObjectItem(json, "dc_voltage_scale");
+    if (cJSON_IsNumber(cal)) config->dc_voltage_scale = (float)cal->valuedouble;
+
+    // WS2811 temporal dithering toggle (applied live, no restart needed)
+    cJSON *dither = cJSON_GetObjectItem(json, "dither_enabled");
+    if (cJSON_IsBool(dither)) {
+        config->dither_enabled = cJSON_IsTrue(dither);
     }
 
     cJSON *gamma = cJSON_GetObjectItem(json, "gamma");
@@ -395,7 +466,9 @@ static esp_err_t api_config_post_handler(httpd_req_t *req)
         }
     }
 
-    ESP_LOGI(TAG, "Saving config with led_type=%d, led_count=%d", config->led_type, config->led_count);
+    ESP_LOGI(TAG, "Saving config: ws1=%d(%d) ws2=%d(%d) pwm=%d",
+             config->ws1_enabled, config->ws1_led_count,
+             config->ws2_enabled, config->ws2_led_count, config->pwm_enabled);
 
     config_manager_save();
     if (names_changed) {
@@ -892,8 +965,11 @@ static const char *config_export_header =
     "// Fields:\n"
     "//   timezone         - POSIX timezone string (e.g. \"UTC0\", \"UTC-2\")\n"
     "//   brightness_max   - Global brightness cap, 10-100 (%)\n"
-    "//   led_type         - 0 = PWM RGB, 1 = WS2811 addressable\n"
-    "//   led_count        - Number of WS2811 LEDs, 1-300\n"
+    "//   ws1_enabled      - Addressable strip 1 populated, true/false\n"
+    "//   ws1_led_count    - Number of LEDs on strip 1, 1-300\n"
+    "//   ws2_enabled      - Addressable strip 2 populated, true/false\n"
+    "//   ws2_led_count    - Number of LEDs on strip 2, 1-300\n"
+    "//   pwm_enabled      - PWM RGB connector populated, true/false\n"
     "//   pwm_frequency    - PWM frequency in Hz, 100-40000\n"
     "//   gamma            - Gamma correction value, 1.0-4.0 (default 2.2)\n"
     "//   temp_offset_ntc  - NTC calibration offset in °C, -5.0 to +5.0 (default 0)\n"
@@ -901,6 +977,11 @@ static const char *config_export_header =
     "//   temp_offset_ds2  - DS18B20 #2 calibration offset in °C, -5.0 to +5.0 (default 0)\n"
     "//   temp_name_ds1    - Display name for External 1 sensor, max 16 chars (default \"External 1\")\n"
     "//   temp_name_ds2    - Display name for External 2 sensor, max 16 chars (default \"External 2\")\n"
+    "//   ac_current_cal       - Amps RMS per Volt RMS at the CT ADC pin\n"
+    "//   dc_current_scale     - Amps per Volt from the op-amp output\n"
+    "//   dc_current_offset_v  - Op-amp output voltage at zero current\n"
+    "//   dc_voltage_scale     - Volts-in per Volt-at-ADC (divider inverse)\n"
+    "//   dither_enabled       - Temporal dithering on animated WS2811 pixel path, true/false (experimental)\n"
     "//\n"
     "//   alarms (array of 8 slots):\n"
     "//     enabled          - true/false\n"
@@ -946,8 +1027,11 @@ static esp_err_t api_config_export_handler(httpd_req_t *req)
     // General settings
     cJSON_AddStringToObject(json, "timezone", config->timezone);
     cJSON_AddNumberToObject(json, "brightness_max", config->brightness_max);
-    cJSON_AddNumberToObject(json, "led_type", config->led_type);
-    cJSON_AddNumberToObject(json, "led_count", config->led_count);
+    cJSON_AddBoolToObject(json, "ws1_enabled", config->ws1_enabled);
+    cJSON_AddNumberToObject(json, "ws1_led_count", config->ws1_led_count);
+    cJSON_AddBoolToObject(json, "ws2_enabled", config->ws2_enabled);
+    cJSON_AddNumberToObject(json, "ws2_led_count", config->ws2_led_count);
+    cJSON_AddBoolToObject(json, "pwm_enabled", config->pwm_enabled);
     cJSON_AddNumberToObject(json, "pwm_frequency", config->pwm_frequency);
     cJSON_AddNumberToObject(json, "gamma", config->gamma_x10 / 10.0);
     cJSON_AddNumberToObject(json, "temp_offset_ntc", config->temp_offset_ntc_x10 / 10.0);
@@ -955,6 +1039,11 @@ static esp_err_t api_config_export_handler(httpd_req_t *req)
     cJSON_AddNumberToObject(json, "temp_offset_ds2", config->temp_offset_ds2_x10 / 10.0);
     cJSON_AddStringToObject(json, "temp_name_ds1", config->temp_name_ds1);
     cJSON_AddStringToObject(json, "temp_name_ds2", config->temp_name_ds2);
+    cJSON_AddNumberToObject(json, "ac_current_cal", config->ac_current_cal);
+    cJSON_AddNumberToObject(json, "dc_current_scale", config->dc_current_scale);
+    cJSON_AddNumberToObject(json, "dc_current_offset_v", config->dc_current_offset_v);
+    cJSON_AddNumberToObject(json, "dc_voltage_scale", config->dc_voltage_scale);
+    cJSON_AddBoolToObject(json, "dither_enabled", config->dither_enabled);
 
     // Alarms (all 8 slots)
     cJSON *alarms = cJSON_AddArrayToObject(json, "alarms");
@@ -1090,24 +1179,54 @@ static esp_err_t api_config_import_handler(httpd_req_t *req)
         }
     }
 
-    cJSON *led_type = cJSON_GetObjectItem(json, "led_type");
-    if (cJSON_IsNumber(led_type)) {
-        uint8_t new_type = (uint8_t)led_type->valuedouble;
-        if (new_type <= 1 && new_type != config->led_type) {
-            config->led_type = new_type;
-            restart_required = true;
+    cJSON *ws1_en_i = cJSON_GetObjectItem(json, "ws1_enabled");
+    if (cJSON_IsBool(ws1_en_i)) {
+        bool v = cJSON_IsTrue(ws1_en_i);
+        if (v != config->ws1_enabled) restart_required = true;
+        config->ws1_enabled = v;
+    }
+    cJSON *ws1_cnt_i = cJSON_GetObjectItem(json, "ws1_led_count");
+    if (cJSON_IsNumber(ws1_cnt_i)) {
+        uint16_t new_count = (uint16_t)ws1_cnt_i->valuedouble;
+        if (new_count >= 1 && new_count <= 300) {
+            if (new_count != config->ws1_led_count) restart_required = true;
+            config->ws1_led_count = new_count;
         }
     }
-
-    cJSON *led_count = cJSON_GetObjectItem(json, "led_count");
-    if (cJSON_IsNumber(led_count)) {
-        uint16_t new_count = (uint16_t)led_count->valuedouble;
+    cJSON *ws2_en_i = cJSON_GetObjectItem(json, "ws2_enabled");
+    if (cJSON_IsBool(ws2_en_i)) {
+        bool v = cJSON_IsTrue(ws2_en_i);
+        if (v != config->ws2_enabled) restart_required = true;
+        config->ws2_enabled = v;
+    }
+    cJSON *ws2_cnt_i = cJSON_GetObjectItem(json, "ws2_led_count");
+    if (cJSON_IsNumber(ws2_cnt_i)) {
+        uint16_t new_count = (uint16_t)ws2_cnt_i->valuedouble;
         if (new_count >= 1 && new_count <= 300) {
-            if (new_count != config->led_count && config->led_type == CONFIG_LED_TYPE_WS2811) {
-                restart_required = true;
-            }
-            config->led_count = new_count;
+            if (new_count != config->ws2_led_count) restart_required = true;
+            config->ws2_led_count = new_count;
         }
+    }
+    cJSON *pwm_en_i = cJSON_GetObjectItem(json, "pwm_enabled");
+    if (cJSON_IsBool(pwm_en_i)) {
+        bool v = cJSON_IsTrue(pwm_en_i);
+        if (v != config->pwm_enabled) restart_required = true;
+        config->pwm_enabled = v;
+    }
+
+    cJSON *cal_i;
+    cal_i = cJSON_GetObjectItem(json, "ac_current_cal");
+    if (cJSON_IsNumber(cal_i)) config->ac_current_cal = (float)cal_i->valuedouble;
+    cal_i = cJSON_GetObjectItem(json, "dc_current_scale");
+    if (cJSON_IsNumber(cal_i)) config->dc_current_scale = (float)cal_i->valuedouble;
+    cal_i = cJSON_GetObjectItem(json, "dc_current_offset_v");
+    if (cJSON_IsNumber(cal_i)) config->dc_current_offset_v = (float)cal_i->valuedouble;
+    cal_i = cJSON_GetObjectItem(json, "dc_voltage_scale");
+    if (cJSON_IsNumber(cal_i)) config->dc_voltage_scale = (float)cal_i->valuedouble;
+
+    cJSON *dither_i = cJSON_GetObjectItem(json, "dither_enabled");
+    if (cJSON_IsBool(dither_i)) {
+        config->dither_enabled = cJSON_IsTrue(dither_i);
     }
 
     cJSON *gamma_item = cJSON_GetObjectItem(json, "gamma");

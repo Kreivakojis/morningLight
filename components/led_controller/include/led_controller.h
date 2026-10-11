@@ -10,19 +10,12 @@ extern "C" {
 #endif
 
 /**
- * @brief LED type enumeration
- */
-typedef enum {
-    LED_TYPE_PWM = 0,      /**< PWM RGB (3-channel analog) */
-    LED_TYPE_WS2811 = 1,   /**< WS2811 addressable LEDs */
-} led_type_t;
-
-/**
  * @brief Initialize the LED controller
  *
- * Selects and initializes the appropriate driver based on configuration.
- * For PWM: Configures PWM channels for RGB LED control with 12-bit resolution.
- * For WS2811: Configures RMT peripheral for addressable LED control.
+ * Initializes all three physical outputs (addressable strip 1, addressable
+ * strip 2, PWM RGB connector). Each is independently enabled/disabled via
+ * config; every call below broadcasts to whichever outputs are enabled, so
+ * callers don't need to know how many physical strips are populated.
  *
  * @return ESP_OK on success
  */
@@ -111,8 +104,8 @@ void led_controller_off(void);
 /**
  * @brief Set raw PWM duty cycles directly (bypasses gamma correction)
  *
- * For PWM mode, sets duty cycles directly.
- * For WS2811 mode, converts to RGB values.
+ * Converts to 8-bit RGB and broadcasts to every enabled output (PWM
+ * connector and any enabled addressable strips), same as the other setters.
  *
  * @param duty_r Red duty cycle (0-4095)
  * @param duty_g Green duty cycle (0-4095)
@@ -136,16 +129,14 @@ esp_err_t led_controller_set_frequency(uint32_t freq_hz);
 uint32_t led_controller_get_frequency(void);
 
 /**
- * @brief Get current LED type
+ * @brief Get the buffer size needed for per-pixel brightness arrays
  *
- * @return Current LED type (PWM or WS2811)
- */
-led_type_t led_controller_get_type(void);
-
-/**
- * @brief Get configured LED count (WS2811 mode)
+ * Returns the larger of the two enabled addressable strips' LED counts
+ * (clamped to a minimum of 1), so callers can size one shared buffer that
+ * works for whichever addressable outputs are enabled. The PWM output
+ * only ever reads index 0.
  *
- * @return Number of LEDs configured (1-300)
+ * @return Number of LEDs to size brightness buffers for (always >= 1)
  */
 uint16_t led_controller_get_led_count(void);
 

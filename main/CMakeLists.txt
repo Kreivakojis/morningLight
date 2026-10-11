@@ -12,7 +12,9 @@ idf_component_register(
         sunrise_engine
         animation_engine
         button_handler
+        adc_shared
         temperature_manager
+        power_monitor
         mqtt_manager
         esp_event
         nvs_flash

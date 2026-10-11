@@ -75,9 +75,14 @@ typedef struct led_driver_ops {
 extern const led_driver_ops_t led_driver_pwm;
 
 /**
- * @brief WS2811 driver operations
+ * @brief WS2811 driver operations for addressable strip 1
  */
-extern const led_driver_ops_t led_driver_ws2811;
+extern const led_driver_ops_t led_driver_ws2811_1;
+
+/**
+ * @brief WS2811 driver operations for addressable strip 2
+ */
+extern const led_driver_ops_t led_driver_ws2811_2;
 
 #ifdef __cplusplus
 }

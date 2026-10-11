@@ -6,6 +6,7 @@
 #include "esp_adc/adc_oneshot.h"
 #include "onewire_bus.h"
 #include "ds18b20.h"
+#include "adc_shared.h"
 
 #include "temperature_manager.h"
 #include "config_manager.h"
@@ -16,8 +17,8 @@ static const char *TAG = "temp_mgr";
 static float s_temperatures[TEMP_SENSOR_COUNT];
 static bool s_valid[TEMP_SENSOR_COUNT];
 
-// ADC handle for NTC
-static adc_oneshot_unit_handle_t s_adc_handle;
+// NTC ADC readiness (channel is configured on the shared ADC_UNIT_1 handle)
+static bool s_ntc_adc_ready;
 
 // DS18B20 handles
 static ds18b20_device_handle_t s_ds18b20[2];
@@ -41,25 +42,13 @@ static float ntc_adc_to_temperature(int adc_raw)
 
 static void init_ntc(void)
 {
-    adc_oneshot_unit_init_cfg_t unit_cfg = {
-        .unit_id = ADC_UNIT_1,
-    };
-    esp_err_t ret = adc_oneshot_new_unit(&unit_cfg, &s_adc_handle);
-    if (ret != ESP_OK) {
-        ESP_LOGW(TAG, "Failed to init ADC unit: %s", esp_err_to_name(ret));
-        return;
-    }
-
-    adc_oneshot_chan_cfg_t chan_cfg = {
-        .atten = ADC_ATTEN_DB_12,
-        .bitwidth = ADC_BITWIDTH_12,
-    };
-    ret = adc_oneshot_config_channel(s_adc_handle, ADC_CHANNEL_6, &chan_cfg);
+    esp_err_t ret = adc_shared_config_channel(ADC_CHANNEL_0, ADC_ATTEN_DB_12);
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Failed to configure ADC channel: %s", esp_err_to_name(ret));
         return;
     }
 
+    s_ntc_adc_ready = true;
     ESP_LOGI(TAG, "NTC thermistor initialized on GPIO %d", CONFIG_ML_GPIO_NTC_ADC);
 }
 
@@ -113,12 +102,12 @@ static void init_ds18b20(int index, int gpio_num)
 
 static void read_ntc(void)
 {
-    if (s_adc_handle == NULL) {
+    if (!s_ntc_adc_ready) {
         return;
     }
 
     int adc_raw = 0;
-    esp_err_t ret = adc_oneshot_read(s_adc_handle, ADC_CHANNEL_6, &adc_raw);
+    esp_err_t ret = adc_shared_read(ADC_CHANNEL_0, &adc_raw);
     if (ret != ESP_OK) {
         s_valid[TEMP_SENSOR_INTERNAL] = false;
         return;

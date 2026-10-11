@@ -113,6 +113,12 @@ async function updateStatus() {
         $('#temp-external-1').textContent = fmtTemp(status.temp_external_1);
         $('#temp-external-2').textContent = fmtTemp(status.temp_external_2);
 
+        var fmtNum = function(v, unit) { return (v !== null && v !== undefined) ? v.toFixed(2) + unit : '--'; };
+        $('#ac-current').textContent = fmtNum(status.ac_current, 'A');
+        $('#dc-current').textContent = fmtNum(status.dc_current, 'A');
+        $('#dc-voltage').textContent = fmtNum(status.dc_voltage, 'V');
+        $('#dc-power').textContent = fmtNum(status.dc_power, 'W');
+
         // Dark mode indicator
         const banner = $('#dark-mode-banner');
         if (banner) {
@@ -455,32 +461,41 @@ $('#gamma').addEventListener('input', (e) => {
     $('#gamma-val').textContent = (e.target.value / 10).toFixed(1);
 });
 
-// LED type selection
-$('#led-type').addEventListener('change', (e) => {
-    const isWS2811 = e.target.value === '1';
-    $('#led-count-group').style.display = isWS2811 ? 'block' : 'none';
-    $('#pwm-freq-group').style.display = isWS2811 ? 'none' : 'block';
-});
+// LED output enable toggles: all three can be populated simultaneously,
+// each checkbox just enables/disables its own sibling input
+function setupOutputToggle(checkboxId, inputId) {
+    const checkbox = $(`#${checkboxId}`);
+    const input = $(`#${inputId}`);
+    checkbox.addEventListener('change', (e) => {
+        input.disabled = !e.target.checked;
+    });
+}
+setupOutputToggle('ws1-enabled', 'ws1-led-count');
+setupOutputToggle('ws2-enabled', 'ws2-led-count');
+setupOutputToggle('pwm-enabled', 'pwm-frequency');
 
 $('#btn-save-settings').addEventListener('click', async () => {
-    const ledType = parseInt($('#led-type').value);
     const config = {
         timezone: $('#timezone').value,
         brightness_max: parseInt($('#max-brightness').value),
-        led_type: ledType,
-        led_count: parseInt($('#led-count').value),
+        ws1_enabled: $('#ws1-enabled').checked,
+        ws1_led_count: parseInt($('#ws1-led-count').value),
+        ws2_enabled: $('#ws2-enabled').checked,
+        ws2_led_count: parseInt($('#ws2-led-count').value),
+        pwm_enabled: $('#pwm-enabled').checked,
+        pwm_frequency: parseInt($('#pwm-frequency').value),
         gamma: parseInt($('#gamma').value) / 10,
         temp_offset_ntc: parseFloat($('#temp-offset-ntc').value) || 0,
         temp_offset_ds1: parseFloat($('#temp-offset-ds1').value) || 0,
         temp_offset_ds2: parseFloat($('#temp-offset-ds2').value) || 0,
         temp_name_ds1: $('#temp-name-ds1').value.trim(),
-        temp_name_ds2: $('#temp-name-ds2').value.trim()
+        temp_name_ds2: $('#temp-name-ds2').value.trim(),
+        ac_current_cal: parseFloat($('#ac-current-cal').value) || 0,
+        dc_current_scale: parseFloat($('#dc-current-scale').value) || 0,
+        dc_current_offset_v: parseFloat($('#dc-current-offset-v').value) || 0,
+        dc_voltage_scale: parseFloat($('#dc-voltage-scale').value) || 0,
+        dither_enabled: $('#dither-enabled').checked
     };
-
-    // Only include PWM frequency for PWM mode
-    if (ledType === 0) {
-        config.pwm_frequency = parseInt($('#pwm-frequency').value);
-    }
 
     const result = await api.post('/api/config', config);
 
@@ -504,10 +519,24 @@ async function loadConfig() {
         $('#pwm-frequency').value = config.pwm_frequency || 200;
         $('#pwm-frequency-val').textContent = `${config.pwm_frequency || 200} Hz`;
 
-        // LED configuration
-        const ledType = config.led_type || 0;
-        $('#led-type').value = ledType;
-        $('#led-count').value = config.led_count || 30;
+        // LED configuration: 3 independent, simultaneous outputs
+        $('#ws1-enabled').checked = !!config.ws1_enabled;
+        $('#ws1-led-count').value = config.ws1_led_count || 30;
+        $('#ws1-led-count').disabled = !config.ws1_enabled;
+        $('#ws2-enabled').checked = !!config.ws2_enabled;
+        $('#ws2-led-count').value = config.ws2_led_count || 30;
+        $('#ws2-led-count').disabled = !config.ws2_enabled;
+        $('#pwm-enabled').checked = !!config.pwm_enabled;
+        $('#pwm-frequency').disabled = !config.pwm_enabled;
+
+        // Power monitoring calibration
+        $('#ac-current-cal').value = config.ac_current_cal !== undefined ? config.ac_current_cal : 30;
+        $('#dc-current-scale').value = config.dc_current_scale !== undefined ? config.dc_current_scale : 10;
+        $('#dc-current-offset-v').value = config.dc_current_offset_v !== undefined ? config.dc_current_offset_v : 1.65;
+        $('#dc-voltage-scale').value = config.dc_voltage_scale !== undefined ? config.dc_voltage_scale : 9.33;
+
+        // WS2811 temporal dithering (optional, experimental)
+        $('#dither-enabled').checked = !!config.dither_enabled;
 
         // Gamma correction
         const gammaVal = config.gamma !== undefined ? Math.round(config.gamma * 10) : 22;
@@ -527,11 +556,6 @@ async function loadConfig() {
         // Update home tab labels
         document.querySelector('#temp-external-1').previousElementSibling.textContent = name1 || 'External 1';
         document.querySelector('#temp-external-2').previousElementSibling.textContent = name2 || 'External 2';
-
-        // Show/hide fields based on LED type
-        const isWS2811 = ledType === 1;
-        $('#led-count-group').style.display = isWS2811 ? 'block' : 'none';
-        $('#pwm-freq-group').style.display = isWS2811 ? 'none' : 'block';
     } catch (e) {
         console.error('Failed to load config:', e);
     }

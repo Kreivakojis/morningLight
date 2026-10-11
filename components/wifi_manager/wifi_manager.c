@@ -177,6 +177,17 @@ esp_err_t wifi_manager_init(void)
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
+    // Disable WiFi modem-sleep power save. Classic ESP32's RMT peripheral has
+    // no DMA path (DMA-capable RMT is S3+ only) and only 64 words of hardware
+    // buffer per channel, so it depends on a timely interrupt-driven refill
+    // to keep up with the WS2811 bit stream. Modem-sleep's periodic MAC/PHY
+    // wake transitions disable interrupts for long enough to miss that
+    // deadline, corrupting individual pixels on the addressable strips —
+    // confirmed by A/B testing with WiFi fully killed at runtime (no
+    // corruption) vs. connected (corruption present). This trades a small
+    // amount of extra power draw for correct LED output.
+    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
+
     // Register event handlers
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
                                                 wifi_event_handler, NULL));
